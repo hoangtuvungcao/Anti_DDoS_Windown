@@ -1,0 +1,26 @@
+[ShieldWAF] 2026/06/09 16:26:04 Clean shutdown initiated
+[ShieldWAF] 2026/06/09 16:26:04 [ENGINE] Stopped gracefully
+[WAF-Game] 2026/06/09 16:26:07 WAF-Game v1.0.0 starting...
+[WAF-Game] 2026/06/09 16:26:07 [GeoIP] Loading Vietnam IP ranges from local vn.zone file...
+[WAF-Game] 2026/06/09 16:26:07 [GeoIP] Successfully loaded 1652 Vietnam IP subnets from local file.
+[WAF-Game] 2026/06/09 16:26:07 [ENGINE] Started with 2 workers
+[WAF-Game] 2026/06/09 16:26:07 Engine started successfully
+[WAF-Game] 2026/06/09 16:26:13 [WAR MODE] Activated — enabling DPI, entropy check, strict limits, GeoIP & TCP SYN Cookies
+[WAF-Game] 2026/06/09 16:28:17 [PEACE MODE] Restored — normal operation
+[WAF-Game] 2026/06/09 16:28:53 [WAR MODE] Activated — enabling DPI, entropy check, strict limits, GeoIP & TCP SYN Cookies
+[WAF-Game] 2026/06/09 16:29:00 [PEACE MODE] Restored — normal operation
+[WAF-Game] 2026/06/09 16:29:02 [WAR MODE] Activated — enabling DPI, entropy check, strict limits, GeoIP & TCP SYN Cookies
+[WAF-Game] 2026/06/09 16:29:03 [PEACE MODE] Restored — normal operation
+[WAF-Game] 2026/06/09 16:29:08 [WAR MODE] Activated — enabling DPI, entropy check, strict limits, GeoIP & TCP SYN Cookies
+[WAF-Game] 2026/06/09 16:29:09 [PEACE MODE] Restored — normal operation
+[WAF-Game] 2026/06/09 16:45:19 Clean shutdown initiated
+[WAF-Game] 2026/06/09 16:45:19 [ENGINE] Stopped gracefully
+[WAF-Game] 2026/06/09 16:45:30 WAF-Game v1.0.0 starting...
+[WAF-Game] 2026/06/09 16:45:30 [GeoIP] Loading Vietnam IP ranges from local vn.zone file...
+[WAF-Game] 2026/06/09 16:45:30 [GeoIP] Successfully loaded 1652 Vietnam IP subnets from local file.
+[WAF-Game] 2026/06/09 16:45:30 [ENGINE] Started with 2 workers
+[WAF-Game] 2026/06/09 16:45:30 Engine started successfully
+[WAF-Game] 2026/06/09 16:46:23 [WAR MODE] Activated — enabling DPI, entropy check, strict limits, GeoIP & TCP SYN Cookies
+[WAF-Game] 2026/06/09 16:46:25 [PEACE MODE] Restored — normal operation
+[WAF-Game] 2026/06/09 16:52:46 Clean shutdown initiated
+[WAF-Game] 2026/06/09 16:52:46 [ENGINE] Stopped gracefully

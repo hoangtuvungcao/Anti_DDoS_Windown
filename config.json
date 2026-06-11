@@ -1,0 +1,37 @@
+{
+  "workers": 2,
+  "log_file": "resources/logs/shield.log",
+  "system_mode": "AUTO",
+  "peace_mode": {
+    "udp_pps_per_flow": 150,
+    "udp_bps_per_flow": 1048576,
+    "udp_pps_per_ip": 500,
+    "blacklist_duration_sec": 300,
+    "tcp_max_conn_per_ip": 100,
+    "tcp_idle_timeout_sec": 5
+  },
+  "war_mode": {
+    "trigger_pps": 50000,
+    "trigger_bps": 209715200,
+    "cooldown_sec": 60,
+    "udp_pps_per_flow": 100,
+    "enable_dpi": true,
+    "entropy_mode": "AUTO",
+    "enable_twoway": true,
+    "geoip_mode": "AUTO",
+    "strict_whitelist": true
+  },
+  "cache": {
+    "max_entries": 200000,
+    "ttl_sec": 30,
+    "sweep_interval_sec": 10,
+    "shards": 64
+  },
+  "discovery": {
+    "interval_sec": 5,
+    "exclude_ports": []
+  },
+  "game_rules": [],
+  "whitelist_ips": [],
+  "blacklist_ips": []
+}
