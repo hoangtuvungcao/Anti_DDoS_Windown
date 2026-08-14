@@ -155,43 +155,58 @@
     <section id="features" class="section">
         <div class="container">
             <div class="section-header">
-                <span class="section-tag">KIẾN TRÚC NHÂN</span>
+                <span class="section-tag">KIẾN TRÚC NHÂN MẠNG</span>
                 <h2 class="section-title">Ma Trận Phòng Thủ 5 Lớp Độc Lập</h2>
                 <p class="section-desc">Mọi gói tin độc hại từ Internet sẽ bị phân tích và triệt tiêu ngay lập tức trước khi chạm vào cổng ứng dụng máy chủ của bạn.</p>
             </div>
 
             <div class="arch-grid">
+                <!-- Layer 0 -->
                 <div class="layer-card">
                     <span class="layer-num">LAYER 0</span>
-                    <div class="layer-icon">🛡️</div>
+                    <div class="layer-icon-wrap">
+                        <svg class="layer-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </div>
                     <h3 class="layer-title">IP & Geo-IP Filter</h3>
                     <p class="layer-desc">Danh sách trắng Whitelist ưu tiên tuyệt đối, Danh sách đen Blacklist tự động khóa, và Bộ lọc Geo-IP Việt Nam (0.01 microsecond) khóa IP quốc tế.</p>
                 </div>
 
+                <!-- Layer 1 -->
                 <div class="layer-card">
                     <span class="layer-num">LAYER 1</span>
-                    <div class="layer-icon">🧹</div>
+                    <div class="layer-icon-wrap">
+                        <svg class="layer-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    </div>
                     <h3 class="layer-title">RFC Packet Scrubbing</h3>
                     <p class="layer-desc">Hủy bỏ các gói tin TCP/UDP bị dị dạng, cờ TCP không hợp lệ (XMAS, NULL scan), và triệt tiêu đòn phản xạ khuếch đại DNS 53, NTP 123, SSDP 1900.</p>
                 </div>
 
+                <!-- Layer 2 -->
                 <div class="layer-card">
                     <span class="layer-num">LAYER 2</span>
-                    <div class="layer-icon">🔍</div>
+                    <div class="layer-icon-wrap">
+                        <svg class="layer-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
                     <h3 class="layer-title">Socket Auto-Discovery</h3>
                     <p class="layer-desc">Tự động quét và phát hiện các cổng đang lắng nghe thực tế trên Windows (1-65535). Mọi gói tin gửi vào cổng đóng sẽ bị hủy tại chỗ, bảo vệ CPU máy chủ.</p>
                 </div>
 
+                <!-- Layer 3 -->
                 <div class="layer-card">
                     <span class="layer-num">LAYER 3</span>
-                    <div class="layer-icon">🌐</div>
+                    <div class="layer-icon-wrap">
+                        <svg class="layer-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+                    </div>
                     <h3 class="layer-title">TCP Shield & Proxy</h3>
                     <p class="layer-desc">Cơ chế Stateless SYN Cookie Proxy chống cạn kiệt bộ nhớ, chống kết nối ma (Slowloris), điều phối tốc độ mở socket cho Web, REST API, Remote Desktop 3389.</p>
                 </div>
 
+                <!-- Layer 4 -->
                 <div class="layer-card">
                     <span class="layer-num">LAYER 4</span>
-                    <div class="layer-icon">🎮</div>
+                    <div class="layer-icon-wrap">
+                        <svg class="layer-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
                     <h3 class="layer-title">UDP & Game Query DPI</h3>
                     <p class="layer-desc">Phân tích sâu chữ ký gói tin (DPI), kiểm soát Token Bucket 120 PPS/luồng, chống bão truy vấn Server List (A2S, SAMP, FiveM query flood) và chống Carpet Bombing /24.</p>
                 </div>
@@ -212,7 +227,7 @@
                 <!-- Preset 1: Hybrid -->
                 <div class="preset-item featured">
                     <div class="preset-item-header">
-                        <span class="preset-badge" style="background:rgba(245, 158, 11, 0.15); color:var(--yellow); border:1px solid rgba(245, 158, 11, 0.4);">🌟 HYBRID ALL-IN-ONE</span>
+                        <span class="preset-badge" style="background:rgba(245, 158, 11, 0.15); color:var(--yellow); border:1px solid rgba(245, 158, 11, 0.4);">HYBRID FULL-STACK MATRIX</span>
                         <h3 class="preset-title">Full-Stack Hybrid Shield</h3>
                         <p class="preset-desc">Tối ưu hoàn hảo cho máy chủ chạy <b>cả Game Server (UDP) lẫn Website / REST API (TCP)</b> cùng một lúc.</p>
                     </div>
@@ -227,7 +242,7 @@
                 <!-- Preset 2: Game -->
                 <div class="preset-item">
                     <div class="preset-item-header">
-                        <span class="preset-badge" style="background:rgba(16, 185, 129, 0.15); color:var(--green); border:1px solid rgba(16, 185, 129, 0.4);">🎮 GAME SERVER FOCUS</span>
+                        <span class="preset-badge" style="background:rgba(16, 185, 129, 0.15); color:var(--green); border:1px solid rgba(16, 185, 129, 0.4);">REALTIME UDP PROTOCOL</span>
                         <h3 class="preset-title">Universal Game Shield</h3>
                         <p class="preset-desc">Tối ưu chuyên sâu cho toàn bộ các thể loại Game Server thời gian thực (UDP Realtime).</p>
                     </div>
@@ -242,7 +257,7 @@
                 <!-- Preset 3: Web -->
                 <div class="preset-item">
                     <div class="preset-item-header">
-                        <span class="preset-badge" style="background:rgba(0, 240, 255, 0.15); color:var(--cyan); border:1px solid rgba(0, 240, 255, 0.4);">🌐 WEB & API FOCUS</span>
+                        <span class="preset-badge" style="background:rgba(0, 240, 255, 0.15); color:var(--cyan); border:1px solid rgba(0, 240, 255, 0.4);">TCP HIGH-CONCURRENCY</span>
                         <h3 class="preset-title">High-Concurrency Web</h3>
                         <p class="preset-desc">Tối ưu cho Web Hosting, REST API, Microservices và WebSocket (HTTP/1.1, HTTP/2, HTTPS).</p>
                     </div>
@@ -257,8 +272,8 @@
                 <!-- Preset 4: Strict -->
                 <div class="preset-item">
                     <div class="preset-item-header">
-                        <span class="preset-badge" style="background:rgba(239, 68, 68, 0.15); color:var(--red); border:1px solid rgba(239, 68, 68, 0.4);">⚔️ MAXIMUM LOCKDOWN</span>
-                        <h3 class="preset-title">Strict War Mode 24/7</h3>
+                        <span class="preset-badge" style="background:rgba(239, 68, 68, 0.15); color:var(--red); border:1px solid rgba(239, 68, 68, 0.4);">MAXIMUM LOCKDOWN 24/7</span>
+                        <h3 class="preset-title">Strict War Mode</h3>
                         <p class="preset-desc">Chế độ phòng thủ nghiêm ngặt cao nhất dành cho các mục tiêu đang bị tấn công dữ dội.</p>
                     </div>
                     <ul class="preset-specs">
@@ -284,10 +299,10 @@
             <div class="simulator-container">
                 <div class="sim-controls">
                     <div class="sim-attacks">
-                        <button class="sim-btn active" onclick="switchSimAttack('SYN_FLOOD')">⚡ TCP SYN Flood (Port 80/443)</button>
-                        <button class="sim-btn" onclick="switchSimAttack('UDP_QUERY_SPAM')">🎮 UDP Query Spam (Port 7777/27015)</button>
-                        <button class="sim-btn" onclick="switchSimAttack('DNS_AMPLIFICATION')">💥 DNS Reflection Amplification</button>
-                        <button class="sim-btn" onclick="switchSimAttack('CARPET_BOMBING')">💣 Subnet Carpet Bombing (/24)</button>
+                        <button class="sim-btn active" onclick="switchSimAttack('SYN_FLOOD')">TCP SYN Flood (Port 80/443)</button>
+                        <button class="sim-btn" onclick="switchSimAttack('UDP_QUERY_SPAM')">UDP Query Flooding (Game)</button>
+                        <button class="sim-btn" onclick="switchSimAttack('DNS_AMPLIFICATION')">DNS Amplification Reflection</button>
+                        <button class="sim-btn" onclick="switchSimAttack('CARPET_BOMBING')">Subnet Carpet Bombing (/24)</button>
                     </div>
                 </div>
 
@@ -343,24 +358,24 @@
 
                 <div class="download-grid">
                     <div class="dl-box">
-                        <b style="color:var(--cyan); font-size:14px;">⚡ Tải & Cài Đặt Nhanh Bằng PowerShell (1 Lệnh Duy Nhất)</b>
+                        <b style="color:var(--cyan); font-size:14px;">Tải & Cài Đặt Nhanh Bằng PowerShell (1 Lệnh Duy Nhất)</b>
                         <p style="font-size:12.5px; color:var(--text-secondary); margin:8px 0 12px;">Mở PowerShell quyền Administrator trên VPS và dán lệnh sau:</p>
                         <div class="code-container">
                             <div class="code-header">
                                 <span>POWERSHELL ONE-LINER</span>
-                                <button class="code-copy-btn" onclick="copyCode('psCmd', 'lệnh PowerShell')">📋 Sao chép</button>
+                                <button class="code-copy-btn" onclick="copyCode('psCmd', 'lệnh PowerShell')"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg> Sao chép</button>
                             </div>
                             <pre class="code-box" id="psCmd">iwr -useb https://raw.githubusercontent.com/hoangtuvungcao/Anti_DDoS_Windown/main/WAF-Shield-Windows-Release.zip -OutFile WAF-Shield.zip; Expand-Archive WAF-Shield.zip -DestinationPath C:\WAF-Shield -Force; cd C:\WAF-Shield\WAF-Shield-Deploy; .\CHAY_WAF.bat</pre>
                         </div>
                     </div>
 
                     <div class="dl-box">
-                        <b style="color:var(--purple); font-size:14px;">📦 Clone Toàn Bộ Dự Án Qua Git</b>
+                        <b style="color:var(--purple); font-size:14px;">Clone Toàn Bộ Dự Án Qua Git</b>
                         <p style="font-size:12.5px; color:var(--text-secondary); margin:8px 0 12px;">Sử dụng Git Command để clone đầy đủ source code và công cụ:</p>
                         <div class="code-container">
                             <div class="code-header">
                                 <span>GIT CLONE COMMAND</span>
-                                <button class="code-copy-btn" onclick="copyCode('gitCmd', 'lệnh Git')">📋 Sao chép</button>
+                                <button class="code-copy-btn" onclick="copyCode('gitCmd', 'lệnh Git')"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg> Sao chép</button>
                             </div>
                             <pre class="code-box" id="gitCmd">git clone https://github.com/hoangtuvungcao/Anti_DDoS_Windown.git
 cd Anti_DDoS_Windown/WAF-Shield-Deploy
@@ -385,22 +400,22 @@ cd Anti_DDoS_Windown/WAF-Shield-Deploy
                 <aside class="docs-sidebar">
                     <div class="docs-nav-title">Mục Lục Nhanh</div>
                     <ul class="docs-nav-list">
-                        <li class="docs-nav-item active"><a href="#doc-quickstart">🚀 1. Chạy Trực Tiếp</a></li>
-                        <li class="docs-nav-item"><a href="#doc-service">⚙️ 2. Dịch Vụ Ngầm 24/7</a></li>
-                        <li class="docs-nav-item"><a href="#doc-cmds">💻 3. Bộ Lệnh Quản Trị</a></li>
-                        <li class="docs-nav-item"><a href="#doc-web">🌐 4. Web SOC Dashboard</a></li>
-                        <li class="docs-nav-item"><a href="#doc-config">🔧 5. Trình Tạo Config.json</a></li>
+                        <li class="docs-nav-item active"><a href="#doc-quickstart">1. Chạy Trực Tiếp</a></li>
+                        <li class="docs-nav-item"><a href="#doc-service">2. Dịch Vụ Ngầm 24/7</a></li>
+                        <li class="docs-nav-item"><a href="#doc-cmds">3. Bộ Lệnh Quản Trị</a></li>
+                        <li class="docs-nav-item"><a href="#doc-web">4. Web SOC Dashboard</a></li>
+                        <li class="docs-nav-item"><a href="#doc-config">5. Trình Tạo Config.json</a></li>
                     </ul>
 
                     <div style="margin-top:24px;">
-                        <input type="text" id="docsSearchInput" placeholder="🔍 Tìm kiếm tài liệu..." style="width:100%; padding:8px 12px; background:rgba(6,11,24,0.7); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px;">
+                        <input type="text" id="docsSearchInput" placeholder="Tìm kiếm tài liệu..." style="width:100%; padding:8px 12px; background:rgba(6,11,24,0.7); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px;">
                     </div>
                 </aside>
 
                 <div class="docs-content">
                     <!-- Doc 1 -->
                     <div class="docs-block" id="doc-quickstart">
-                        <h3>🚀 1. Cách Chạy Trực Tiếp (Console & Web Dashboard)</h3>
+                        <h3>1. Cách Chạy Trực Tiếp (Console & Web Dashboard)</h3>
                         <p>Dành cho kiểm tra nhanh trạng thái lưu lượng và hiệu năng máy chủ khi đang kết nối Remote Desktop:</p>
                         <ol style="margin-left:20px; color:var(--text-secondary); line-height:1.8; font-size:14px;">
                             <li>Giải nén thư mục <b><code>WAF-Shield-Deploy/</code></b> vào ổ đĩa trên VPS (ví dụ <code>C:\WAF-Shield</code>).</li>
@@ -412,13 +427,13 @@ cd Anti_DDoS_Windown/WAF-Shield-Deploy
 
                     <!-- Doc 2 -->
                     <div class="docs-block" id="doc-service">
-                        <h3>⚙️ 2. Cài Đặt Chạy Ngầm Tự Động 24/7 (Windows Service)</h3>
+                        <h3>2. Cài Đặt Chạy Ngầm Tự Động 24/7 (Windows Service)</h3>
                         <p>WAF sẽ tự động khởi động cùng hệ điều hành Windows ngay khi VPS bật nguồn mà không cần bạn phải đăng nhập Remote Desktop:</p>
                         
                         <div class="code-container">
                             <div class="code-header">
                                 <span>CÁC BƯỚC CÀI ĐẶT DỊCH VỤ</span>
-                                <button class="code-copy-btn" onclick="copyCode('srvCmds', 'hướng dẫn dịch vụ')">📋 Sao chép</button>
+                                <button class="code-copy-btn" onclick="copyCode('srvCmds', 'hướng dẫn dịch vụ')"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg> Sao chép</button>
                             </div>
                             <pre class="code-box" id="srvCmds">Bước 1: Chuột phải vào 'CAI_DAT_SERVICE.bat' -> Chọn 'Run as Administrator'
 Bước 2: Chuột phải vào 'BAT_SERVICE.bat'     -> Chọn 'Run as Administrator' để chạy ngầm!
@@ -429,13 +444,13 @@ Khi muốn gỡ hoàn toàn: Chạy 'GO_BO_SERVICE.bat'</pre>
 
                     <!-- Doc 3 -->
                     <div class="docs-block" id="doc-cmds">
-                        <h3>💻 3. Bộ Lệnh Quản Trị Hệ Thống Qua CMD / PowerShell</h3>
+                        <h3>3. Bộ Lệnh Quản Trị Hệ Thống Qua CMD / PowerShell</h3>
                         <p>Các lệnh tương tác dòng lệnh hữu ích khi bạn quản trị VPS từ xa qua SSH hoặc Terminal:</p>
 
                         <div class="code-container">
                             <div class="code-header">
                                 <span>WINDOWS SERVICE MANAGEMENT COMMANDS</span>
-                                <button class="code-copy-btn" onclick="copyCode('winCmds', 'lệnh Windows')">📋 Sao chép</button>
+                                <button class="code-copy-btn" onclick="copyCode('winCmds', 'lệnh Windows')"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg> Sao chép</button>
                             </div>
                             <pre class="code-box" id="winCmds"># Khởi động dịch vụ WAF
 net start "WAFGameService"
@@ -456,7 +471,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
 
                     <!-- Doc 4 -->
                     <div class="docs-block" id="doc-web">
-                        <h3>🌐 4. Quản Trị Qua Web SOC Dashboard (Cổng 8080)</h3>
+                        <h3>4. Quản Trị Qua Web SOC Dashboard (Cổng 8080)</h3>
                         <p>Giao diện Web SOC Dashboard tích hợp sẵn trong file <code>waf-game.exe</code> cho phép bạn theo dõi và điều khiển toàn bộ ma trận phòng thủ:</p>
                         <ul style="margin-left:20px; color:var(--text-secondary); line-height:1.8; font-size:14px;">
                             <li><b>Overview & Traffic</b>: Biểu đồ thời gian thực 60 giây 3 luồng (Clean RX, Outbound TX, Dropped DDoS).</li>
@@ -470,17 +485,17 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
 
                     <!-- Doc 5: Config Generator -->
                     <div class="docs-block" id="doc-config">
-                        <h3>🔧 5. Trình Tạo File Cấu Hình Trực Quan (`config.json`)</h3>
+                        <h3>5. Trình Tạo File Cấu Hình Trực Quan (`config.json`)</h3>
                         <p>Tùy chỉnh thông số phòng thủ phù hợp với cấu hình máy chủ của bạn và tải file <code>config.json</code> về:</p>
 
                         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:20px;">
                             <div>
                                 <label style="font-size:12px; font-weight:700; color:var(--text-muted);">CHẾ ĐỘ MẶC ĐỊNH</label>
                                 <select id="cfgPreset" onchange="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
-                                    <option value="HYBRID">🌟 Full-Stack Hybrid (Game + Web)</option>
-                                    <option value="GAME">🎮 Universal Game Shield</option>
-                                    <option value="WEB">🌐 High-Concurrency Web Shield</option>
-                                    <option value="STRICT">⚔️ Strict War Mode</option>
+                                    <option value="HYBRID">Full-Stack Hybrid (Game + Web)</option>
+                                    <option value="GAME">Universal Game Shield</option>
+                                    <option value="WEB">High-Concurrency Web Shield</option>
+                                    <option value="STRICT">Strict War Mode</option>
                                 </select>
                             </div>
                             <div>
@@ -500,7 +515,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                         <div class="code-container">
                             <div class="code-header">
                                 <span>CONFIG.JSON TẠO TỰ ĐỘNG</span>
-                                <button class="code-copy-btn" onclick="copyCode('configJsonPreview', 'cấu hình config.json')">📋 Sao chép</button>
+                                <button class="code-copy-btn" onclick="copyCode('configJsonPreview', 'cấu hình config.json')"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg> Sao chép</button>
                             </div>
                             <pre class="code-box" id="configJsonPreview"></pre>
                         </div>

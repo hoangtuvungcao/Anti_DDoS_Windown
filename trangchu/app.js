@@ -233,7 +233,7 @@ function copyCode(elementId, label = 'mã lệnh') {
     const text = el.innerText || el.textContent;
 
     navigator.clipboard.writeText(text.trim()).then(() => {
-        showToast(`✓ Đã sao chép ${label} vào bộ nhớ tạm!`, 'success');
+        showToast(`Đã sao chép ${label} vào bộ nhớ tạm!`, 'success');
     }).catch(() => {
         showToast('Không thể sao chép tự động', 'error');
     });
@@ -250,11 +250,14 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     toast.className = 'toast';
-    let icon = '⚡';
-    if (type === 'success') icon = '✓';
-    if (type === 'error') icon = '⚠';
+    let iconSvg = '<svg width="16" height="16" fill="none" stroke="#00f0ff" stroke-width="2" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+    if (type === 'success') {
+        iconSvg = '<svg width="16" height="16" fill="none" stroke="#10b981" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>';
+    } else if (type === 'error') {
+        iconSvg = '<svg width="16" height="16" fill="none" stroke="#ef4444" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+    }
 
-    toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+    toast.innerHTML = `${iconSvg} <span>${message}</span>`;
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -264,6 +267,7 @@ function showToast(message, type = 'info') {
         setTimeout(() => toast.remove(), 300);
     }, 3200);
 }
+
 
 /* --------------------------------------------------------------------------
    4. INTERACTIVE CONFIG.JSON GENERATOR
@@ -327,8 +331,9 @@ function downloadCustomConfig() {
     document.body.appendChild(a);
     a.remove();
     URL.revokeObjectURL(url);
-    showToast('✓ Đã tải file config.json tùy biến!', 'success');
+    showToast('Đã tải file config.json tùy biến!', 'success');
 }
+
 
 /* --------------------------------------------------------------------------
    5. DOCUMENTATION SEARCH & TAB FILTER

@@ -516,9 +516,28 @@ code, pre {
     margin-bottom: 16px;
     width: fit-content;
 }
-.layer-icon {
-    font-size: 32px;
-    margin-bottom: 16px;
+.layer-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-sm);
+    background: rgba(0, 240, 255, 0.08);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 18px;
+    color: var(--cyan);
+    transition: var(--transition);
+}
+.layer-card:hover .layer-icon-wrap {
+    background: var(--cyan);
+    color: #030712;
+    box-shadow: 0 0 16px var(--cyan-glow);
+    transform: scale(1.08);
+}
+.layer-svg {
+    width: 24px;
+    height: 24px;
 }
 .layer-title {
     font-size: 18px;
@@ -530,6 +549,7 @@ code, pre {
     color: var(--text-secondary);
     line-height: 1.6;
 }
+
 
 /* 4 Presets Showcase */
 .presets-grid {
