@@ -1,0 +1,64 @@
+package engine
+
+import (
+	"testing"
+
+	"waf-game/pkg/packet"
+)
+
+func TestGameShield_A2SQueryLimiting(t *testing.T) {
+	gs := NewGameShield(nil)
+
+	a2sPayload := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0x54, 'S', 'o', 'u', 'r', 'c', 'e'}
+
+	pkt := &packet.Packet{
+		Protocol: packet.ProtoUDP,
+		SrcIP:    [4]byte{192, 0, 2, 1},
+		DstIP:    [4]byte{192, 0, 2, 2},
+		SrcPort:  12345,
+		DstPort:  27015,
+	}
+
+	// 5 queries should pass (5 PPS limit)
+	for i := 0; i < 5; i++ {
+		res := gs.CheckGamePacket(pkt, a2sPayload)
+		if res != FilterPass {
+			t.Fatalf("Expected A2S query %d to pass, got %v", i, res)
+		}
+	}
+
+	// 6th query should be dropped
+	res := gs.CheckGamePacket(pkt, a2sPayload)
+	if res != FilterDrop {
+		t.Errorf("Expected 6th A2S query to be dropped, got %v", res)
+	}
+}
+
+func TestGameShield_SAMPQueryLimiting(t *testing.T) {
+	gs := NewGameShield(nil)
+
+	// SAMP header: 'S','A','M','P' + IP (4) + Port (2) + 'i' (Info)
+	sampPayload := []byte{'S', 'A', 'M', 'P', 127, 0, 0, 1, 0x1E, 0x61, 'i'}
+
+	pkt := &packet.Packet{
+		Protocol: packet.ProtoUDP,
+		SrcIP:    [4]byte{192, 0, 2, 1},
+		DstIP:    [4]byte{192, 0, 2, 2},
+		SrcPort:  12345,
+		DstPort:  7777,
+	}
+
+	// 5 queries should pass
+	for i := 0; i < 5; i++ {
+		res := gs.CheckGamePacket(pkt, sampPayload)
+		if res != FilterPass {
+			t.Fatalf("Expected SAMP query %d to pass, got %v", i, res)
+		}
+	}
+
+	// 6th query should be dropped
+	res := gs.CheckGamePacket(pkt, sampPayload)
+	if res != FilterDrop {
+		t.Errorf("Expected 6th SAMP query to be dropped, got %v", res)
+	}
+}

@@ -84,9 +84,6 @@ func (m *ModeManager) CycleMode() string {
 }
 
 // applyMode syncs all engine subsystems to match the current protection level.
-// isWar=true means aggressive protection, isWar=false means relaxed.
-// NOTE: This method is also called by StateManager callbacks (via engine.go),
-// so it must be safe to call without holding mu.
 func (m *ModeManager) applyMode(isWar bool) {
 	if m.eng == nil {
 		return
@@ -101,39 +98,47 @@ func (m *ModeManager) applyMode(isWar bool) {
 			udpShield.SetDPI(false)
 			udpShield.SetEntropy(false)
 			udpShield.SetTwoWay(false)
-			// Reset rate limits to very permissive values
-			udpShield.SetRateLimits(1000000, 1000000000, 1000000)
+			if udpShield.GameShield != nil {
+				udpShield.GameShield.SetEnabled(false)
+			}
+			udpShield.SetRateLimits(1000000, 1000000000, 1000000, 1000000)
 
 		case ModeOn:
-			// ON: everything at maximum protection
+			// ON: maximum protection
 			udpShield.SetDPI(true)
 			udpShield.SetEntropy(true)
 			udpShield.SetTwoWay(true)
+			if udpShield.GameShield != nil {
+				udpShield.GameShield.SetEnabled(true)
+			}
 			// Strict War-level rate limits
-			udpShield.SetRateLimits(100, 524288, 50) // 100 pps/flow, 512KB/s, 50 pps/IP
+			udpShield.SetRateLimits(40, 524288, 100, 250)
 
 		default: // AUTO
 			if isWar {
 				udpShield.SetDPI(true)
-				// Entropy: respect engine's entropyMode setting
 				if m.eng.entropyMode == EntropyModeOn || m.eng.entropyMode == EntropyModeAuto {
 					udpShield.SetEntropy(true)
 				} else {
 					udpShield.SetEntropy(false)
 				}
 				udpShield.SetTwoWay(true)
-				udpShield.SetRateLimits(100, 524288, 50)
+				if udpShield.GameShield != nil {
+					udpShield.GameShield.SetEnabled(true)
+				}
+				udpShield.SetRateLimits(40, 524288, 100, 250)
 			} else {
 				udpShield.SetDPI(false)
-				// Entropy: only if explicitly ON in Peace
 				if m.eng.entropyMode == EntropyModeOn {
 					udpShield.SetEntropy(true)
 				} else {
 					udpShield.SetEntropy(false)
 				}
 				udpShield.SetTwoWay(false)
-				// Relaxed Peace-level rate limits (from config defaults)
-				udpShield.SetRateLimits(150, 1048576, 500)
+				if udpShield.GameShield != nil {
+					udpShield.GameShield.SetEnabled(true)
+				}
+				udpShield.SetRateLimits(80, 1048576, 250, 500)
 			}
 		}
 	}
@@ -159,11 +164,13 @@ func (m *ModeManager) GetMode() string {
 
 func sanitizeMode(mode string) string {
 	switch mode {
-	case "on", "ON", "On":
+	case "on", "ON", "On", "war", "WAR", "War":
 		return ModeOn
-	case "off", "OFF", "Off":
+	case "off", "OFF", "Off", "peace", "PEACE", "Peace":
 		return ModeOff
 	default:
 		return ModeAuto
 	}
 }
+
+

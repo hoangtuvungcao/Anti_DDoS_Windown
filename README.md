@@ -1,280 +1,147 @@
-# WAF-Game - Tường lửa Anti-DDoS cho Windows
+# 🛡️ WAF-Shield Enterprise v3.0 — Tường Lửa Anti-DDoS Đa Năng Cho Windows
 
-WAF-Game là công cụ tường lửa/anti-DDoS chạy trực tiếp trên Windows, sử dụng WinDivert để bắt, phân tích và lọc gói tin TCP/UDP theo thời gian thực. Dự án hướng tới việc bảo vệ server game hoặc các dịch vụ mạng chạy trên Windows bằng cơ chế tự động phát hiện cổng, giám sát lưu lượng, giới hạn tốc độ, blacklist IP và dashboard CLI.
+**WAF-Shield Enterprise** là giải pháp tường lửa và trung tâm điều hành bảo mật (SOC) chuyên dụng chống tấn công từ chối dịch vụ (**Anti-DDoS**) hoạt động trực tiếp trên nhân mạng Windows (Windows Server 2012, 2012 R2, 2016, 2019, 2022, 2025 và Windows 10, Windows 11).
 
-Ứng dụng cần chạy bằng quyền Administrator vì WinDivert phải nạp driver ở tầng mạng của hệ điều hành.
+Hệ thống hoạt động ở cấp độ driver mạng NDIS (thông qua WinDivert), bảo vệ **hoàn toàn trong suốt 100% (Zero-Invasive)** cho mọi ứng dụng máy chủ (**Mọi thể loại Game Server UDP/TCP, Web Server HTTP/HTTPS/WebSocket, Voice Server, RDP Remote Desktop 3389, SSH, Database**) trên toàn bộ dải cổng từ **1 đến 65535**.
 
-## Demo
+---
+
+## TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.0 ENTERPRISE
+
+1. ** Giám Sát Lưu Lượng Mạng 2 Chiều Toàn Diện (Bidirectional RX & TX Telemetry)**:
+   - Theo dõi song song **Lưu lượng đi vào (Inbound RX)** và **Lưu lượng phản hồi đi ra (Outbound TX)**.
+   - Thống kê chi tiết cả số gói tin/giây (**PPS**) và băng thông/giây (**Bps / Mbps / Gbps**).
+   - Biểu đồ nhịp sóng 60 giây thời gian thực 3 dải: **Lưu lượng sạch vào (Xanh lá)**, **Lưu lượng phản hồi ra (Xanh Cyan)**, và **Lưu lượng DDoS bị triệt tiêu (Đỏ)**.
+
+2. **🎛️ 4 Chế Độ Phòng Thủ 1 Chạm (Instant Defense Presets)**:
+   - ** Full-Stack Hybrid Shield**: Chế độ tối ưu hoàn hảo cho máy chủ chạy **cả Game Server (UDP) và Website / REST API (TCP)** cùng lúc.
+   - ** Universal Game Server Shield**: Tối ưu chuyên sâu cho Game Server thời gian thực (**UDP Realtime**), bật bộ lọc Query Spam DPI và điều phối 120 PPS/luồng.
+   - ** High-Concurrency Web & API Shield**: Tối ưu cho Web Server, REST API và WebSocket (HTTP/1.1, HTTP/2, HTTPS). Bảo vệ chống cạn kiệt kết nối bằng Stateless SYN Proxy.
+   - ** Maximum Lockdown Defense**: Khóa chặt máy chủ 24/7 chỉ cho phép IP Việt Nam và bật toàn bộ lớp bảo vệ nghiêm ngặt.
+
+3. **🌍 Bộ Lọc Vị Trí Địa Lý Geo-IP Việt Nam (Binary Tree Siêu Tốc 0.01 microsecond)**:
+   - Tích hợp sẵn cơ sở dữ liệu `vn.zone` chứa hàng chục nghìn dải IP Việt Nam (Viettel, VNPT, FPT, CMC...).
+   - Chế độ **ONLY VN**: Khóa 100% toàn bộ dải IP quốc tế chỉ với 1 click.
+   - Chế độ **AUTO**: Tự động cho phép IP quốc tế khi thời bình (Peace Mode) và tự động khóa IP quốc tế khi bị bão tấn công (War Mode).
+
+4. **🛡️ Bộ Icon 3D Cyber Shield Siêu Đẹp (Masterpiece AAA Quality)**:
+   - Nhúng trực tiếp vào Win32 PE Resource của file `.exe`. Hiển thị icon 3D phát sáng sắc nét trong **Task Manager**, **Taskbar**, **Windows Explorer** và **Web SOC Dashboard**.
+
+5. **⚡ Tự Động Nhận Diện Kết Nối (Zero-Drop TCP Adoption)**:
+   - Mọi kết nối Remote Desktop (3389), Web (80, 443) hoặc Game khi gửi dữ liệu ứng dụng thực tế sẽ được đưa ngay vào danh sách tin cậy, đảm bảo không bao giờ bị rớt kết nối quản trị VPS.
 
 
-![WAF-Game Demo](https://github.com/hoangtuvungcao/Anti_DDoS_Windown/blob/main/resources/win.jpg)
 
+---
 
-
-## Tính năng chính
-
-- Bảo vệ dịch vụ TCP và UDP bằng WinDivert.
-- Tự động quét và phát hiện các cổng đang mở trên hệ thống.
-- Dashboard CLI hiển thị lưu lượng, số gói bị chặn, flow đang hoạt động, cổng được bảo vệ và blacklist.
-- Hỗ trợ 3 chế độ vận hành: `AUTO`, `ON`, `OFF`.
-- Tự động chuyển giữa Peace Mode và War Mode dựa trên ngưỡng PPS/BPS.
-- Giới hạn UDP theo từng flow và theo từng IP nguồn.
-- Giới hạn số kết nối TCP trên mỗi IP.
-- Tự dọn kết nối TCP nhàn rỗi theo thời gian timeout.
-- Blacklist IP/flow có thời gian hết hạn.
-- Hỗ trợ kiểm tra entropy payload UDP để giảm traffic bất thường.
-- Hỗ trợ Geo-IP mode cho chính sách VN-only khi cần.
-- Lưu log vận hành vào file cấu hình sẵn.
-- Có thể thay đổi một số rule trực tiếp trong dashboard mà không cần tắt chương trình.
-
-## Cách hoạt động tổng quan
-
-1. Chương trình kiểm tra quyền Administrator.
-2. Kiểm tra sự tồn tại của `WinDivert.dll` và `WinDivert64.sys`.
-3. Đọc cấu hình từ `config.json`.
-4. Khởi tạo engine lọc gói tin, metrics và logger.
-5. Tự động quét các cổng TCP/UDP đang hoạt động.
-6. Hiển thị dashboard CLI.
-7. Theo dõi lưu lượng và tự chuyển trạng thái nếu phát hiện traffic vượt ngưỡng.
-8. Khi thoát, chương trình dừng engine và gỡ driver WinDivert một cách an toàn.
-
-## Yêu cầu hệ thống
-
-- Windows 64-bit.
-- Terminal chạy bằng quyền Administrator.
-- Go theo phiên bản trong `go.mod` nếu muốn build từ source.
-- Bộ file WinDivert đặt đúng đường dẫn:
-  - `resources/bin/WinDivert.dll`
-  - `resources/bin/WinDivert64.sys`
-- File cấu hình:
-  - `config.json`
-
-## Cấu trúc thư mục
+## 🏗️ KIẾN TRÚC MA TRẬN PHÒNG THỦ 5 LỚP
 
 ```text
-.
-├── main.go                     # Điểm khởi động chương trình
-├── config.json                 # File cấu hình chính
-├── go.mod                      # Khai báo module Go
-├── waf-game.exe                # File chạy đã build sẵn nếu có
-├── pkg/
-│   ├── cli/                    # Dashboard CLI và phím điều khiển
-│   ├── config/                 # Đọc/ghi cấu hình JSON
-│   ├── datastore/              # Cấu trúc dữ liệu cache, token bucket
-│   ├── engine/                 # Engine lọc gói, TCP/UDP shield, mode manager
-│   ├── packet/                 # Parser gói tin
-│   ├── stats/                  # Metrics, thống kê lưu lượng
-│   └── windivert/              # Binding gọi WinDivert
-├── resources/
-│   ├── bin/                    # DLL/SYS của WinDivert
-│   ├── geo/                    # Dữ liệu Geo-IP nội bộ
-│   └── logs/                   # Log vận hành
-└── winres/                     # Icon và tài nguyên build Windows
+               ┌────────────────────────────────────────────────────────┐
+               │    LƯU LƯỢNG MẠNG TỪ INTERNET (INBOUND RX TRAFFIC)      │
+               └──────────────────────────┬─────────────────────────────┘
+                                          │
+    [Lớp 0: IP Filter]                    ▼
+    ├── Danh Sách Trắng (Whitelist) ──────────────► [CHO QUA 100%]
+    └── Danh Sách Đen (Blacklist / Geo-IP) ───────► [HỦY TẠI CHỖ (DROP)]
+                                          │
+    [Lớp 1: RFC Scrubbing]                ▼
+    └── Kiểm tra Header, Hủy gói dị dạng, Lọc phản xạ UDP (DNS 53, NTP 123...)
+                                          │
+    [Lớp 2: Socket Discovery]             ▼
+    └── Tự động phát hiện cổng mở (1-65535), Hủy ngay gói tin gửi tới cổng đóng
+                                          │
+                                ┌─────────┴─────────┐
+                                │                   │
+                    [Lớp 3: TCP Shield]     [Lớp 4: UDP Shield]
+                    ├── Stateless SYN Cookie ├── Token Bucket (Per-Flow/IP)
+                    ├── Anti-Slowloris       ├── Anti-Carpet Bombing (/24)
+                    └── Kết nối đồng thời     └── Game Query DPI & Entropy
+                                │                   │
+                                └─────────┬─────────┘
+                                          ▼
+               ┌────────────────────────────────────────────────────────┐
+               │      MÁY CHỦ ỨNG DỤNG / GAME SERVER (ĐỘ TRỄ 0ms)       │
+               └────────────────────────────────────────────────────────┘
 ```
 
-## Chạy bản có sẵn
+---
 
-Mở PowerShell hoặc Command Prompt bằng quyền Administrator, sau đó chạy:
+## 🚀 HƯỚNG DẪN CÀI ĐẶT & VẬN HÀNH
 
-```powershell
-.\waf-game.exe
-```
+Thư mục phát hành `WAF-Shield-Deploy/` đã tích hợp sẵn các file thực thi tiện lợi:
 
-Nếu chương trình báo thiếu WinDivert, hãy kiểm tra lại các file:
+### Cách 1: Chạy Trực Tiếp Bằng Giao Diện Console & Web
+* Nhấp đúp chuột vào file **`CHAY_WAF.bat`** (hoặc mở Command Prompt với quyền *Run as Administrator* và gõ `waf-game.exe`).
+* Bảng điều khiển Console sẽ hiển thị đầy đủ thông số PPS, Bps, trạng thái phòng thủ.
+* Mở trình duyệt truy cập: **`http://localhost:8080`** (hoặc `http://IP_VPS:8080`).
 
-```text
-resources/bin/WinDivert.dll
-resources/bin/WinDivert64.sys
-```
+### Cách 2: Cài Đặt Chạy Ngầm 24/7 (Windows Service)
+Để WAF tự động chạy ngầm bảo vệ máy chủ ngay khi VPS bật nguồn mà không cần đăng nhập Remote Desktop:
+* **Bước 1**: Nhấp chuột phải vào file **`CAI_DAT_SERVICE.bat`** $\to$ Chọn **Run as Administrator**.
+* **Bước 2**: Nhấp chuột phải vào file **`BAT_SERVICE.bat`** $\to$ Chọn **Run as Administrator** để khởi chạy dịch vụ.
+* **Tắt dịch vụ khi cần**: Chạy file **`TAT_SERVICE.bat`**.
+* **Gỡ bỏ hoàn toàn dịch vụ**: Chạy file **`GO_BO_SERVICE.bat`**.
 
-## Chạy từ source
+---
 
-```powershell
-go run .
-```
+## 🖥️ GIAO DIỆN WEB SOC DASHBOARD TRỰC TUYẾN (Cổng 8080)
 
-Lưu ý: lệnh này vẫn cần chạy trong terminal có quyền Administrator.
+| Tab Chức Năng | Mô Tả Chi Tiết |
+| :--- | :--- |
+| **Overview & Traffic** | Biểu đồ sóng thời gian thực 60 giây (RX Clean, TX Outbound, Blocked DDoS), thẻ KPI lưu lượng mạng 2 chiều, phân loại đòn tấn công. |
+| **Attack Radar** | Thống kê số lượng gói tin bị chặn bởi từng lớp: Subnet /24, UDP Amplification, Query DPI, Out-of-State. |
+| **Presets & Tuning** | Kích hoạt 1 chạm 3 chế độ: Universal Game Shield,  Web & API Shield, Strict Lockdown. |
+| **Access Control** | Quản lý danh sách cấm (Blacklist) và danh sách tin cậy (Whitelist), hỗ trợ thêm/xóa nhanh IP. |
+| **Port Inspector** | Danh sách toàn bộ các cổng TCP/UDP đang mở trên máy chủ và lớp khiên bảo vệ tương ứng. |
+| **Security Logs** | Luồng nhật ký sự kiện bảo mật trực tiếp theo thời gian thực (Live Event Stream). |
 
-## Build file EXE
+---
 
-```powershell
-go build -o waf-game.exe .
-```
+## ⚙️ CẤU HÌNH TÙY CHỈNH NÂNG CAO (`config.json`)
 
-Sau khi build, khi copy sang máy khác cần mang theo tối thiểu:
-
-```text
-waf-game.exe
-config.json
-resources/bin/WinDivert.dll
-resources/bin/WinDivert64.sys
-resources/geo/vn.zone
-```
-
-Nếu muốn giữ log đúng vị trí mặc định, giữ thêm thư mục:
-
-```text
-resources/logs/
-```
-
-## Cấu hình
-
-File cấu hình chính là `config.json`. Khi chương trình chạy, một số thay đổi từ dashboard có thể được ghi ngược lại vào file này.
-
-### Cấu hình chung
-
-| Trường | Ý nghĩa |
-| --- | --- |
-| `workers` | Số worker xử lý gói tin. Tăng giá trị này nếu máy có nhiều CPU core và lưu lượng cao. |
-| `log_file` | Đường dẫn file log. Mặc định là `resources/logs/shield.log`. |
-| `system_mode` | Chế độ hệ thống: `AUTO`, `ON`, `OFF`. |
-
-### `system_mode`
-
-| Giá trị | Ý nghĩa |
-| --- | --- |
-| `AUTO` | Tự động chuyển Peace/War theo traffic thực tế. Đây là chế độ khuyến nghị. |
-| `ON` | Ép hệ thống ở trạng thái bảo vệ mạnh. |
-| `OFF` | Tắt phần bảo vệ chủ động, dùng khi cần kiểm tra hoặc debug. |
-
-### `peace_mode`
-
-Đây là cấu hình khi lưu lượng bình thường.
-
-| Trường | Ý nghĩa |
-| --- | --- |
-| `udp_pps_per_flow` | Số packet UDP tối đa mỗi giây cho một flow. |
-| `udp_bps_per_flow` | Số byte UDP tối đa mỗi giây cho một flow. |
-| `udp_pps_per_ip` | Số packet UDP tối đa mỗi giây cho một IP nguồn. |
-| `blacklist_duration_sec` | Thời gian blacklist tính bằng giây. |
-| `tcp_max_conn_per_ip` | Số kết nối TCP tối đa trên mỗi IP. |
-| `tcp_idle_timeout_sec` | Thời gian timeout cho kết nối TCP nhàn rỗi. |
-
-### `war_mode`
-
-Đây là cấu hình khi hệ thống phát hiện lưu lượng tấn công hoặc khi ép chế độ bảo vệ mạnh.
-
-| Trường | Ý nghĩa |
-| --- | --- |
-| `trigger_pps` | Ngưỡng packet/giây để kích hoạt War Mode. |
-| `trigger_bps` | Ngưỡng byte/giây để kích hoạt War Mode. |
-| `cooldown_sec` | Thời gian chờ trước khi rời War Mode sau khi traffic ổn định. |
-| `udp_pps_per_flow` | Giới hạn UDP mỗi flow khi ở War Mode. |
-| `enable_dpi` | Bật/tắt kiểm tra sâu payload nếu engine dùng rule này. |
-| `entropy_mode` | Chế độ kiểm tra entropy: `AUTO`, `ON`, `OFF`. |
-| `enable_twoway` | Bật/tắt xác minh hai chiều cho UDP nếu engine dùng rule này. |
-| `geoip_mode` | Chế độ Geo-IP: `AUTO`, `ON`, `OFF`. |
-| `strict_whitelist` | Ưu tiên whitelist khi áp dụng luật nghiêm ngặt. |
-
-### `cache`
-
-| Trường | Ý nghĩa |
-| --- | --- |
-| `max_entries` | Số entry tối đa trong cache. |
-| `ttl_sec` | Thời gian sống của entry cache. |
-| `sweep_interval_sec` | Chu kỳ dọn cache. |
-| `shards` | Số shard để giảm lock contention khi xử lý nhiều traffic. |
-
-### `discovery`
-
-| Trường | Ý nghĩa |
-| --- | --- |
-| `interval_sec` | Chu kỳ quét port đang mở. |
-| `exclude_ports` | Danh sách port không muốn tự động bảo vệ. |
-
-Ví dụ loại trừ port `80` và `443`:
+Mọi thông số đều có thể điều chỉnh linh hoạt trong file `config.json`:
 
 ```json
-"discovery": {
-  "interval_sec": 5,
-  "exclude_ports": [80, 443]
+{
+  "system_mode": "AUTO",
+  "peace_mode": {
+    "udp_pps_per_flow": 120,
+    "udp_bps_per_flow": 1048576,
+    "udp_pps_per_ip": 350,
+    "subnet_pps_limit": 1200,
+    "tcp_max_conn_per_ip": 60,
+    "tcp_conn_rate_per_ip": 25,
+    "tcp_idle_timeout_sec": 90
+  },
+  "war_mode": {
+    "trigger_pps": 4000,
+    "trigger_bps": 31457280,
+    "udp_pps_per_flow": 35,
+    "udp_pps_per_ip": 80,
+    "subnet_pps_limit": 200,
+    "geoip_mode": "AUTO"
+  },
+  "web": {
+    "enabled": true,
+    "port": 8080,
+    "username": "admin",
+    "password": "change_me_here",
+    "allow_lan": true
+  }
 }
 ```
 
-### Danh sách IP
+---
 
-| Trường | Ý nghĩa |
-| --- | --- |
-| `whitelist_ips` | IP được cho phép/ưu tiên bỏ qua khi lọc. |
-| `blacklist_ips` | IP bị chặn sẵn từ lúc khởi động. |
+## 📦 THÀNH PHẦN FILE GÓI TRIỂN KHAI
 
-Ví dụ:
+* **`waf-game.exe`**: File thực thi chính của WAF (Tích hợp sẵn Web Server SOC, NDIS Engine, Tường lửa Anti-DDoS).
+* **`WinDivert.dll` & `WinDivert64.sys`**: Driver mạng độ trễ 0ms của Windows.
+* **`config.json`**: File cấu hình thông số phòng thủ WAF.
+* **`resources/geo/vn.zone`**: Cơ sở dữ liệu IP Việt Nam.
+* **Các file `.bat` điều khiển**: `CHAY_WAF.bat`, `CAI_DAT_SERVICE.bat`, `BAT_SERVICE.bat`, `TAT_SERVICE.bat`, `GO_BO_SERVICE.bat`.
 
-```json
-"whitelist_ips": ["127.0.0.1", "192.168.1.10"],
-"blacklist_ips": ["203.0.113.10"]
-```
 
-## Dashboard CLI
-
-Dashboard hiển thị các thông tin chính:
-
-- Trạng thái engine đang hoạt động.
-- Chế độ hiện tại: `AUTO-PEACE`, `AUTO-WAR`, `ON-WAR`, `OFF-PEACE`.
-- Uptime của chương trình.
-- Lưu lượng inbound theo PPS/BPS.
-- Lưu lượng bị drop theo PPS/BPS.
-- Cổng TCP/UDP đang được bảo vệ.
-- Số UDP flow đang hoạt động.
-- Số TCP connection đã xác minh.
-- Thống kê drop theo từng lớp kiểm tra.
-- Danh sách blacklist đang có hiệu lực.
-- Các cấu hình có thể chỉnh nhanh.
-
-## Phím tắt
-
-| Phím | Chức năng |
-| --- | --- |
-| `M` | Về màn hình chính. |
-| `B` | Xem danh sách blacklist. |
-| `S` | Mở trang cấu hình nhanh. |
-| `W` | Đổi chế độ theo vòng `AUTO -> ON -> OFF -> AUTO`. |
-| `A` | Chuyển nhanh về `AUTO`. |
-| `1` | Đổi giới hạn TCP connections/IP trong trang Settings. |
-| `2` | Đổi TCP idle timeout trong trang Settings. |
-| `3` | Đổi UDP flow PPS limit trong trang Settings. |
-| `4` | Đổi UDP IP PPS limit trong trang Settings. |
-| `5` | Đổi UDP entropy mode trong trang Settings. |
-| `6` | Đổi Geo-IP mode trong trang Settings. |
-| `Q` | Thoát chương trình an toàn. |
-
-## Log và xử lý lỗi
-
-Log mặc định nằm tại:
-
-```text
-resources/logs/shield.log
-```
-
-Một số lỗi thường gặp:
-
-| Lỗi | Cách kiểm tra |
-| --- | --- |
-| Chương trình yêu cầu Administrator | Đóng terminal, mở lại bằng `Run as Administrator`. |
-| Thiếu WinDivert | Kiểm tra `resources/bin/WinDivert.dll` và `resources/bin/WinDivert64.sys`. |
-| Không đọc được cấu hình | Kiểm tra JSON trong `config.json` có hợp lệ không. |
-| Không ghi được log | Kiểm tra thư mục `resources/logs/` có tồn tại và có quyền ghi không. |
-| Không thấy port được bảo vệ | Kiểm tra dịch vụ game/server đã mở port chưa và `exclude_ports` có loại trừ port đó không. |
-
-## Khuyến nghị triển khai
-
-- Nên chạy thử trên môi trường staging trước khi dùng cho server thật.
-- Giữ `system_mode` là `AUTO` nếu chưa có lý do cụ thể để ép `ON` hoặc `OFF`.
-- Không đặt ngưỡng quá thấp nếu server có lượng người chơi thật lớn, vì có thể chặn nhầm traffic hợp lệ.
-- Theo dõi `shield.log` trong giai đoạn đầu để tinh chỉnh `peace_mode` và `war_mode`.
-- Với server nhiều traffic UDP, nên tăng `workers` phù hợp với số CPU core.
-- Khi cập nhật file EXE, giữ nguyên `config.json` nếu không muốn mất cấu hình cũ.
-
-## Kiểm thử
-
-Chạy test:
-
-```powershell
-go test ./...
-```
-
-Một số test có thể phụ thuộc vào môi trường Windows/WinDivert. Nếu test hoặc runtime liên quan tới driver thất bại trên máy không phải Windows, hãy kiểm tra lại môi trường chạy.
-
-## License
-
-Dự án hiện chưa có license.
+---
+*© 2026 WAF-Shield Enterprise Cyber Security — All Rights Reserved.*

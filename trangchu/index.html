@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>WAF-Shield Enterprise v3.0 — Tường Lửa Anti-DDoS Đa Năng Cho Windows</title>
+    <meta name="description" content="Hệ thống tường lửa Anti-DDoS chuyên dụng cho Game Server, Web Server và API trên Windows. Tốc độ nhân NDIS, độ trễ 0ms, giám sát 2 chiều RX/TX.">
+    <meta name="keywords" content="Anti DDoS Windows, Game Server DDoS Protection, WAF Shield, WinDivert Firewall, Anti SYN Flood, Anti UDP Flood">
+    <meta property="og:title" content="WAF-Shield Enterprise v3.0 — Anti-DDoS Firewall">
+    <meta property="og:description" content="Bảo vệ toàn diện Game Server và Web Server trên Windows trước các cuộc tấn công DDoS quy mô lớn.">
+    <meta property="og:type" content="website">
+
+    <!-- Clean Vector SVG Cyber Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2300f0ff'%3E%3Cpath d='M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18l7 3.12v4.7c0 4.54-3.08 8.78-7 9.88-3.92-1.1-7-5.34-7-9.88V6.3l7-3.12z'/%3E%3C/svg%3E">
+
+    <!-- CSS Design System -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Cyber Canvas Background -->
+    <canvas id="cyberCanvas"></canvas>
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+    <div class="glow-orb glow-orb-3"></div>
+
+    <!-- Navigation Header -->
+    <header class="navbar">
+        <div class="container nav-container">
+            <a href="#" class="nav-brand">
+                <svg class="brand-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M50 8L88 22V52C88 74 50 92 50 92C50 92 12 74 12 52V22L50 8Z" fill="url(#brandGrad)" stroke="#00f0ff" stroke-width="4"/>
+                    <path d="M50 16L80 28V50C80 68 50 82 50 82C50 82 20 68 20 50V28L50 16Z" fill="#0d1830" stroke="#3b82f6" stroke-width="2"/>
+                    <circle cx="50" cy="46" r="10" fill="#00f0ff"/>
+                    <path d="M46 54L43 66H57L54 54H46Z" fill="#00f0ff"/>
+                    <defs>
+                        <linearGradient id="brandGrad" x1="50" y1="8" x2="50" y2="92" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#0a1a36"/>
+                            <stop offset="1" stop-color="#060c18"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <div>
+                    <span class="brand-title">WAF-SHIELD</span>
+                    <span class="brand-badge">ENTERPRISE v3.0</span>
+                </div>
+            </a>
+
+            <ul class="nav-menu">
+                <li><a href="#features" class="nav-link">Ma Trận Phòng Thủ</a></li>
+                <li><a href="#presets" class="nav-link">4 Chế Độ 1 Chạm</a></li>
+                <li><a href="#simulator" class="nav-link">Giả Lập DDoS</a></li>
+                <li><a href="#download" class="nav-link">Tải Về & GitHub</a></li>
+                <li><a href="#docs" class="nav-link">Tài Liệu Hướng Dẫn</a></li>
+            </ul>
+
+            <div class="nav-cta">
+                <a href="https://github.com/hoangtuvungcao/Anti_DDoS_Windown" target="_blank" class="btn btn-secondary btn-sm">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    GitHub
+                </a>
+                <a href="#download" class="btn btn-primary btn-sm">Tải Bản Cài Đặt</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container hero-grid">
+            <div>
+                <div class="hero-tag">
+                    <span class="pulse-dot"></span>
+                    HỆ THỐNG PHÒNG THỦ THẾ HỆ MỚI CHO WINDOWS
+                </div>
+                <h1 class="hero-title">
+                    Tường Lửa Chống DDoS <br>
+                    <span class="gradient-text">Zero-Latency Cho Windows</span>
+                </h1>
+                <p class="hero-desc">
+                    Giải pháp tường lửa nhân mạng NDIS chuyên dụng bảo vệ toàn diện <b>Game Server (UDP/TCP), Web Server & REST API</b>. Triệt tiêu mọi đòn tấn công SYN Flood, UDP Query Spam, Amplification và Carpet Bombing với độ trễ 0ms.
+                </p>
+                <div class="hero-actions">
+                    <a href="#download" class="btn btn-primary btn-lg">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Tải Bản Phát Hành (v3.0)
+                    </a>
+                    <a href="#docs" class="btn btn-secondary btn-lg">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        Tài Liệu Hướng Dẫn
+                    </a>
+                </div>
+                <div class="hero-metrics">
+                    <div class="metric-box">
+                        <h4>10,000,000+</h4>
+                        <p>Khả Năng Xử Lý Gói (PPS)</p>
+                    </div>
+                    <div class="metric-box">
+                        <h4>0.01 µs</h4>
+                        <p>Tốc Độ Lọc Nhân Mạng</p>
+                    </div>
+                    <div class="metric-box">
+                        <h4>1-65535</h4>
+                        <p>Bảo Vệ Toàn Bộ Dải Cổng</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hero Interactive Widget -->
+            <div class="hero-widget">
+                <div class="widget-header">
+                    <div>
+                        <b style="font-size:14px;">WAF-SHIELD KERNEL ENGINE</b>
+                        <p style="font-size:11px; color:var(--text-muted);">NDIS Direct Driver • Zero Overhead</p>
+                    </div>
+                    <div class="widget-status">
+                        <span class="pulse-dot"></span>
+                        PROTECTION ACTIVE
+                    </div>
+                </div>
+
+                <div class="widget-visual">
+                    <div class="shield-radar-ring"></div>
+                    <svg class="shield-center-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M50 8L88 22V52C88 74 50 92 50 92C50 92 12 74 12 52V22L50 8Z" fill="url(#heroGrad)" stroke="#00f0ff" stroke-width="4"/>
+                        <path d="M50 18L80 30V50C80 66 50 80 50 80C50 80 20 66 20 50V30L50 18Z" fill="#0b1329" stroke="#3b82f6" stroke-width="2"/>
+                        <circle cx="50" cy="46" r="10" fill="#00f0ff"/>
+                        <path d="M46 54L43 66H57L54 54H46Z" fill="#00f0ff"/>
+                        <defs>
+                            <linearGradient id="heroGrad" x1="50" y1="8" x2="50" y2="92" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#0a1a36"/>
+                                <stop offset="1" stop-color="#040812"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <div style="font-size:12px; font-weight:700; color:var(--cyan); margin-top:12px; font-family:var(--font-mono);">
+                        [ L3 • L4 • L7 DEFENSE ACTIVE ]
+                    </div>
+                </div>
+
+                <div class="widget-stream">
+                    <div class="stream-card">
+                        <div class="stream-title">Inbound (RX Clean)</div>
+                        <div class="stream-val" style="color:var(--green);">42.8 kPPS</div>
+                    </div>
+                    <div class="stream-card">
+                        <div class="stream-title">Outbound (TX Real)</div>
+                        <div class="stream-val" style="color:var(--cyan);">86.4 Kbps</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 5-Layer Defense Architecture -->
+    <section id="features" class="section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">KIẾN TRÚC NHÂN</span>
+                <h2 class="section-title">Ma Trận Phòng Thủ 5 Lớp Độc Lập</h2>
+                <p class="section-desc">Mọi gói tin độc hại từ Internet sẽ bị phân tích và triệt tiêu ngay lập tức trước khi chạm vào cổng ứng dụng máy chủ của bạn.</p>
+            </div>
+
+            <div class="arch-grid">
+                <div class="layer-card">
+                    <span class="layer-num">LAYER 0</span>
+                    <div class="layer-icon">🛡️</div>
+                    <h3 class="layer-title">IP & Geo-IP Filter</h3>
+                    <p class="layer-desc">Danh sách trắng Whitelist ưu tiên tuyệt đối, Danh sách đen Blacklist tự động khóa, và Bộ lọc Geo-IP Việt Nam (0.01 microsecond) khóa IP quốc tế.</p>
+                </div>
+
+                <div class="layer-card">
+                    <span class="layer-num">LAYER 1</span>
+                    <div class="layer-icon">🧹</div>
+                    <h3 class="layer-title">RFC Packet Scrubbing</h3>
+                    <p class="layer-desc">Hủy bỏ các gói tin TCP/UDP bị dị dạng, cờ TCP không hợp lệ (XMAS, NULL scan), và triệt tiêu đòn phản xạ khuếch đại DNS 53, NTP 123, SSDP 1900.</p>
+                </div>
+
+                <div class="layer-card">
+                    <span class="layer-num">LAYER 2</span>
+                    <div class="layer-icon">🔍</div>
+                    <h3 class="layer-title">Socket Auto-Discovery</h3>
+                    <p class="layer-desc">Tự động quét và phát hiện các cổng đang lắng nghe thực tế trên Windows (1-65535). Mọi gói tin gửi vào cổng đóng sẽ bị hủy tại chỗ, bảo vệ CPU máy chủ.</p>
+                </div>
+
+                <div class="layer-card">
+                    <span class="layer-num">LAYER 3</span>
+                    <div class="layer-icon">🌐</div>
+                    <h3 class="layer-title">TCP Shield & Proxy</h3>
+                    <p class="layer-desc">Cơ chế Stateless SYN Cookie Proxy chống cạn kiệt bộ nhớ, chống kết nối ma (Slowloris), điều phối tốc độ mở socket cho Web, REST API, Remote Desktop 3389.</p>
+                </div>
+
+                <div class="layer-card">
+                    <span class="layer-num">LAYER 4</span>
+                    <div class="layer-icon">🎮</div>
+                    <h3 class="layer-title">UDP & Game Query DPI</h3>
+                    <p class="layer-desc">Phân tích sâu chữ ký gói tin (DPI), kiểm soát Token Bucket 120 PPS/luồng, chống bão truy vấn Server List (A2S, SAMP, FiveM query flood) và chống Carpet Bombing /24.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4 Instant Presets -->
+    <section id="presets" class="section" style="background:rgba(6, 11, 24, 0.5);">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">CHẾ ĐỘ TỐI ƯU</span>
+                <h2 class="section-title">4 Chế Độ Phòng Thủ 1 Chạm (Presets)</h2>
+                <p class="section-desc">Chuyển đổi linh hoạt hoặc kết hợp đồng thời cả Game Server và Web Server chỉ với 1 click chuột trên Web SOC Dashboard.</p>
+            </div>
+
+            <div class="presets-grid">
+                <!-- Preset 1: Hybrid -->
+                <div class="preset-item featured">
+                    <div class="preset-item-header">
+                        <span class="preset-badge" style="background:rgba(245, 158, 11, 0.15); color:var(--yellow); border:1px solid rgba(245, 158, 11, 0.4);">🌟 HYBRID ALL-IN-ONE</span>
+                        <h3 class="preset-title">Full-Stack Hybrid Shield</h3>
+                        <p class="preset-desc">Tối ưu hoàn hảo cho máy chủ chạy <b>cả Game Server (UDP) lẫn Website / REST API (TCP)</b> cùng một lúc.</p>
+                    </div>
+                    <ul class="preset-specs">
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Bật lọc Game Query DPI cho cổng game UDP</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Mở rộng kết nối đồng thời cho Web/API TCP</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> 2 Khiên UDP & TCP hoạt động song song 100%</li>
+                    </ul>
+                    <a href="#docs" class="btn btn-primary btn-sm">Xem Hướng Dẫn Cấu Hình</a>
+                </div>
+
+                <!-- Preset 2: Game -->
+                <div class="preset-item">
+                    <div class="preset-item-header">
+                        <span class="preset-badge" style="background:rgba(16, 185, 129, 0.15); color:var(--green); border:1px solid rgba(16, 185, 129, 0.4);">🎮 GAME SERVER FOCUS</span>
+                        <h3 class="preset-title">Universal Game Shield</h3>
+                        <p class="preset-desc">Tối ưu chuyên sâu cho toàn bộ các thể loại Game Server thời gian thực (UDP Realtime).</p>
+                    </div>
+                    <ul class="preset-specs">
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Giới hạn mượt mà 120 PPS/luồng người chơi</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Bộ lọc chống bão query spam (A2S, SAMP...)</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Theo dõi lưu lượng 2 chiều phản hồi TX</li>
+                    </ul>
+                    <a href="#docs" class="btn btn-secondary btn-sm">Chi Tiết Thông Số</a>
+                </div>
+
+                <!-- Preset 3: Web -->
+                <div class="preset-item">
+                    <div class="preset-item-header">
+                        <span class="preset-badge" style="background:rgba(0, 240, 255, 0.15); color:var(--cyan); border:1px solid rgba(0, 240, 255, 0.4);">🌐 WEB & API FOCUS</span>
+                        <h3 class="preset-title">High-Concurrency Web</h3>
+                        <p class="preset-desc">Tối ưu cho Web Hosting, REST API, Microservices và WebSocket (HTTP/1.1, HTTP/2, HTTPS).</p>
+                    </div>
+                    <ul class="preset-specs">
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Bật Stateless SYN Proxy chống tràn RAM</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Cho phép 200+ kết nối đồng thời/subnet</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Dọn dẹp kết nối treo Slowloris tự động</li>
+                    </ul>
+                    <a href="#docs" class="btn btn-secondary btn-sm">Chi Tiết Thông Số</a>
+                </div>
+
+                <!-- Preset 4: Strict -->
+                <div class="preset-item">
+                    <div class="preset-item-header">
+                        <span class="preset-badge" style="background:rgba(239, 68, 68, 0.15); color:var(--red); border:1px solid rgba(239, 68, 68, 0.4);">⚔️ MAXIMUM LOCKDOWN</span>
+                        <h3 class="preset-title">Strict War Mode 24/7</h3>
+                        <p class="preset-desc">Chế độ phòng thủ nghiêm ngặt cao nhất dành cho các mục tiêu đang bị tấn công dữ dội.</p>
+                    </div>
+                    <ul class="preset-specs">
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Tự động kích hoạt Geo-IP chỉ cho phép Việt Nam</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Siết giới hạn luồng xuống 35 PPS/flow</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Tự động đưa attacker vào blacklist</li>
+                    </ul>
+                    <a href="#docs" class="btn btn-secondary btn-sm">Chi Tiết Thông Số</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive DDoS Simulator -->
+    <section id="simulator" class="section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">TRÌNH GIẢ LẬP TRỰC QUAN</span>
+                <h2 class="section-title">Mô Phỏng Triệt Tiêu Tấn Công Thời Gian Thực</h2>
+                <p class="section-desc">Trải nghiệm cách ma trận WAF-Shield phân loại và hủy các gói tin độc hại (đỏ) trong khi vẫn cho các gói tin người dùng hợp lệ (xanh) đi qua mượt mà.</p>
+            </div>
+
+            <div class="simulator-container">
+                <div class="sim-controls">
+                    <div class="sim-attacks">
+                        <button class="sim-btn active" onclick="switchSimAttack('SYN_FLOOD')">⚡ TCP SYN Flood (Port 80/443)</button>
+                        <button class="sim-btn" onclick="switchSimAttack('UDP_QUERY_SPAM')">🎮 UDP Query Spam (Port 7777/27015)</button>
+                        <button class="sim-btn" onclick="switchSimAttack('DNS_AMPLIFICATION')">💥 DNS Reflection Amplification</button>
+                        <button class="sim-btn" onclick="switchSimAttack('CARPET_BOMBING')">💣 Subnet Carpet Bombing (/24)</button>
+                    </div>
+                </div>
+
+                <div class="sim-display">
+                    <div class="sim-canvas-box">
+                        <canvas id="simCanvas"></canvas>
+                    </div>
+
+                    <div class="sim-stats-box">
+                        <div class="stream-card">
+                            <div class="stream-title">Vector Tấn Công</div>
+                            <div class="stream-val" id="simStatVector" style="color:var(--yellow); font-size:15px;">SYN_FLOOD</div>
+                        </div>
+                        <div class="stream-card">
+                            <div class="stream-title">Lưu Lượng Tấn Công Giả Lập</div>
+                            <div class="stream-val" id="simStatPPS" style="color:var(--cyan);">124.5 kPPS</div>
+                        </div>
+                        <div class="stream-card">
+                            <div class="stream-title">Hiệu Suất Triệt Tiêu</div>
+                            <div class="stream-val" id="simStatDrop" style="color:var(--green);">99.89% Blocked</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download & GitHub Release Center -->
+    <section id="download" class="section" style="background:rgba(6, 11, 24, 0.5);">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">TRUNG TÂM TẢI VỀ</span>
+                <h2 class="section-title">Tải Xuống & Cài Đặt Trong 10 Giây</h2>
+                <p class="section-desc">Hỗ trợ đầy đủ Windows Server 2012, 2012 R2, 2016, 2019, 2022, 2025 và Windows 10, Windows 11 x64.</p>
+            </div>
+
+            <div class="download-card">
+                <h3 style="font-size:26px; font-weight:800; margin-bottom:12px;">WAF-Shield Enterprise v3.0 (Windows x64)</h3>
+                <p style="color:var(--text-secondary); max-width:600px; margin:0 auto 28px;">
+                    Gói cài đặt tự chứa đầy đủ mã thực thi, driver NDIS WinDivert, cơ sở dữ liệu Geo-IP Việt Nam và kịch bản dịch vụ tự động.
+                </p>
+
+                <div style="display:flex; justify-content:center; gap:16px; flex-wrap:wrap; margin-bottom:30px;">
+                    <a href="https://github.com/hoangtuvungcao/Anti_DDoS_Windown/releases/latest/download/WAF-Shield-Windows-Release.zip" class="btn btn-primary btn-lg">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Tải Bản Release .ZIP (3.9 MB)
+                    </a>
+                    <a href="https://github.com/hoangtuvungcao/Anti_DDoS_Windown" target="_blank" class="btn btn-secondary btn-lg">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                        Mã Nguồn Trên GitHub
+                    </a>
+                </div>
+
+                <div class="download-grid">
+                    <div class="dl-box">
+                        <b style="color:var(--cyan); font-size:14px;">⚡ Tải & Cài Đặt Nhanh Bằng PowerShell (1 Lệnh Duy Nhất)</b>
+                        <p style="font-size:12.5px; color:var(--text-secondary); margin:8px 0 12px;">Mở PowerShell quyền Administrator trên VPS và dán lệnh sau:</p>
+                        <div class="code-container">
+                            <div class="code-header">
+                                <span>POWERSHELL ONE-LINER</span>
+                                <button class="code-copy-btn" onclick="copyCode('psCmd', 'lệnh PowerShell')">📋 Sao chép</button>
+                            </div>
+                            <pre class="code-box" id="psCmd">iwr -useb https://raw.githubusercontent.com/hoangtuvungcao/Anti_DDoS_Windown/main/WAF-Shield-Windows-Release.zip -OutFile WAF-Shield.zip; Expand-Archive WAF-Shield.zip -DestinationPath C:\WAF-Shield -Force; cd C:\WAF-Shield\WAF-Shield-Deploy; .\CHAY_WAF.bat</pre>
+                        </div>
+                    </div>
+
+                    <div class="dl-box">
+                        <b style="color:var(--purple); font-size:14px;">📦 Clone Toàn Bộ Dự Án Qua Git</b>
+                        <p style="font-size:12.5px; color:var(--text-secondary); margin:8px 0 12px;">Sử dụng Git Command để clone đầy đủ source code và công cụ:</p>
+                        <div class="code-container">
+                            <div class="code-header">
+                                <span>GIT CLONE COMMAND</span>
+                                <button class="code-copy-btn" onclick="copyCode('gitCmd', 'lệnh Git')">📋 Sao chép</button>
+                            </div>
+                            <pre class="code-box" id="gitCmd">git clone https://github.com/hoangtuvungcao/Anti_DDoS_Windown.git
+cd Anti_DDoS_Windown/WAF-Shield-Deploy
+.\CHAY_WAF.bat</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comprehensive Documentation & Commands Guide -->
+    <section id="docs" class="section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">TÀI LIỆU HƯỚNG DẪN</span>
+                <h2 class="section-title">Bộ Lệnh & Tài Liệu Vận Hành Toàn Diện</h2>
+                <p class="section-desc">Hướng dẫn chi tiết từ cách chạy trực tiếp, cài đặt dịch vụ ngầm 24/7 đến tùy biến file cấu hình.</p>
+            </div>
+
+            <div class="docs-wrapper">
+                <aside class="docs-sidebar">
+                    <div class="docs-nav-title">Mục Lục Nhanh</div>
+                    <ul class="docs-nav-list">
+                        <li class="docs-nav-item active"><a href="#doc-quickstart">🚀 1. Chạy Trực Tiếp</a></li>
+                        <li class="docs-nav-item"><a href="#doc-service">⚙️ 2. Dịch Vụ Ngầm 24/7</a></li>
+                        <li class="docs-nav-item"><a href="#doc-cmds">💻 3. Bộ Lệnh Quản Trị</a></li>
+                        <li class="docs-nav-item"><a href="#doc-web">🌐 4. Web SOC Dashboard</a></li>
+                        <li class="docs-nav-item"><a href="#doc-config">🔧 5. Trình Tạo Config.json</a></li>
+                    </ul>
+
+                    <div style="margin-top:24px;">
+                        <input type="text" id="docsSearchInput" placeholder="🔍 Tìm kiếm tài liệu..." style="width:100%; padding:8px 12px; background:rgba(6,11,24,0.7); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px;">
+                    </div>
+                </aside>
+
+                <div class="docs-content">
+                    <!-- Doc 1 -->
+                    <div class="docs-block" id="doc-quickstart">
+                        <h3>🚀 1. Cách Chạy Trực Tiếp (Console & Web Dashboard)</h3>
+                        <p>Dành cho kiểm tra nhanh trạng thái lưu lượng và hiệu năng máy chủ khi đang kết nối Remote Desktop:</p>
+                        <ol style="margin-left:20px; color:var(--text-secondary); line-height:1.8; font-size:14px;">
+                            <li>Giải nén thư mục <b><code>WAF-Shield-Deploy/</code></b> vào ổ đĩa trên VPS (ví dụ <code>C:\WAF-Shield</code>).</li>
+                            <li>Nhấp đúp chuột vào file <b><code>CHAY_WAF.bat</code></b> (hoặc chuột phải chọn <i>Run as Administrator</i>).</li>
+                            <li>Bảng điều khiển Console sẽ hiển thị thông số PPS, Bps, trạng thái ma trận bảo vệ.</li>
+                            <li>Mở trình duyệt truy cập <b><code>http://localhost:8080</code></b> để vào Web SOC Dashboard.</li>
+                        </ol>
+                    </div>
+
+                    <!-- Doc 2 -->
+                    <div class="docs-block" id="doc-service">
+                        <h3>⚙️ 2. Cài Đặt Chạy Ngầm Tự Động 24/7 (Windows Service)</h3>
+                        <p>WAF sẽ tự động khởi động cùng hệ điều hành Windows ngay khi VPS bật nguồn mà không cần bạn phải đăng nhập Remote Desktop:</p>
+                        
+                        <div class="code-container">
+                            <div class="code-header">
+                                <span>CÁC BƯỚC CÀI ĐẶT DỊCH VỤ</span>
+                                <button class="code-copy-btn" onclick="copyCode('srvCmds', 'hướng dẫn dịch vụ')">📋 Sao chép</button>
+                            </div>
+                            <pre class="code-box" id="srvCmds">Bước 1: Chuột phải vào 'CAI_DAT_SERVICE.bat' -> Chọn 'Run as Administrator'
+Bước 2: Chuột phải vào 'BAT_SERVICE.bat'     -> Chọn 'Run as Administrator' để chạy ngầm!
+Khi cần tạm dừng: Chạy 'TAT_SERVICE.bat'
+Khi muốn gỡ hoàn toàn: Chạy 'GO_BO_SERVICE.bat'</pre>
+                        </div>
+                    </div>
+
+                    <!-- Doc 3 -->
+                    <div class="docs-block" id="doc-cmds">
+                        <h3>💻 3. Bộ Lệnh Quản Trị Hệ Thống Qua CMD / PowerShell</h3>
+                        <p>Các lệnh tương tác dòng lệnh hữu ích khi bạn quản trị VPS từ xa qua SSH hoặc Terminal:</p>
+
+                        <div class="code-container">
+                            <div class="code-header">
+                                <span>WINDOWS SERVICE MANAGEMENT COMMANDS</span>
+                                <button class="code-copy-btn" onclick="copyCode('winCmds', 'lệnh Windows')">📋 Sao chép</button>
+                            </div>
+                            <pre class="code-box" id="winCmds"># Khởi động dịch vụ WAF
+net start "WAFGameService"
+
+# Tạm dừng dịch vụ WAF
+net stop "WAFGameService"
+
+# Kiểm tra trạng thái dịch vụ WAF
+sc query "WAFGameService"
+
+# Kiểm tra các cổng TCP/UDP đang được bảo vệ
+netstat -ano | findstr "LISTENING"
+
+# Kiểm tra kết nối Web SOC Dashboard
+Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
+                        </div>
+                    </div>
+
+                    <!-- Doc 4 -->
+                    <div class="docs-block" id="doc-web">
+                        <h3>🌐 4. Quản Trị Qua Web SOC Dashboard (Cổng 8080)</h3>
+                        <p>Giao diện Web SOC Dashboard tích hợp sẵn trong file <code>waf-game.exe</code> cho phép bạn theo dõi và điều khiển toàn bộ ma trận phòng thủ:</p>
+                        <ul style="margin-left:20px; color:var(--text-secondary); line-height:1.8; font-size:14px;">
+                            <li><b>Overview & Traffic</b>: Biểu đồ thời gian thực 60 giây 3 luồng (Clean RX, Outbound TX, Dropped DDoS).</li>
+                            <li><b>Attack Radar</b>: Phân loại chiến thuật tấn công và đếm số gói tin bị triệt tiêu theo từng lớp.</li>
+                            <li><b>Presets & Tuning</b>: Kích hoạt 1 chạm các chế độ Full-Stack Hybrid, Game Shield, Web Shield, Strict Lockdown.</li>
+                            <li><b>Access Control</b>: Thêm/xóa nhanh IP vào Whitelist (Danh sách trắng) và Blacklist (Danh sách cấm).</li>
+                            <li><b>Port Inspector</b>: Quét tự động danh sách các cổng TCP/UDP mở và lớp khiên tương ứng.</li>
+                            <li><b>Security Logs</b>: Luồng nhật ký bảo mật trực tiếp theo thời gian thực.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Doc 5: Config Generator -->
+                    <div class="docs-block" id="doc-config">
+                        <h3>🔧 5. Trình Tạo File Cấu Hình Trực Quan (`config.json`)</h3>
+                        <p>Tùy chỉnh thông số phòng thủ phù hợp với cấu hình máy chủ của bạn và tải file <code>config.json</code> về:</p>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:20px;">
+                            <div>
+                                <label style="font-size:12px; font-weight:700; color:var(--text-muted);">CHẾ ĐỘ MẶC ĐỊNH</label>
+                                <select id="cfgPreset" onchange="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
+                                    <option value="HYBRID">🌟 Full-Stack Hybrid (Game + Web)</option>
+                                    <option value="GAME">🎮 Universal Game Shield</option>
+                                    <option value="WEB">🌐 High-Concurrency Web Shield</option>
+                                    <option value="STRICT">⚔️ Strict War Mode</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size:12px; font-weight:700; color:var(--text-muted);">GIỚI HẠN UDP (PPS/FLOW)</label>
+                                <input type="number" id="cfgFlowPPS" value="120" oninput="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
+                            </div>
+                            <div>
+                                <label style="font-size:12px; font-weight:700; color:var(--text-muted);">CỔNG WEB SOC DASHBOARD</label>
+                                <input type="number" id="cfgWebPort" value="8080" oninput="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
+                            </div>
+                            <div>
+                                <label style="font-size:12px; font-weight:700; color:var(--text-muted);">MẬT KHẨU WEB SOC</label>
+                                <input type="text" id="cfgWebPass" value="admin_sec_2026" oninput="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
+                            </div>
+                        </div>
+
+                        <div class="code-container">
+                            <div class="code-header">
+                                <span>CONFIG.JSON TẠO TỰ ĐỘNG</span>
+                                <button class="code-copy-btn" onclick="copyCode('configJsonPreview', 'cấu hình config.json')">📋 Sao chép</button>
+                            </div>
+                            <pre class="code-box" id="configJsonPreview"></pre>
+                        </div>
+
+                        <button class="btn btn-primary btn-sm" onclick="downloadCustomConfig()" style="margin-top:10px;">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            Tải File config.json Về Máy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <div class="nav-brand" style="margin-bottom:12px;">
+                        <span class="brand-title">WAF-SHIELD</span>
+                        <span class="brand-badge">v3.0</span>
+                    </div>
+                    <p class="footer-desc">
+                        Hệ thống tường lửa Anti-DDoS cấp độ nhân mạng NDIS cho Windows Server. Giải pháp bảo vệ trong suốt 100% cho mọi ứng dụng máy chủ và Game Server.
+                    </p>
+                </div>
+                <div class="footer-col">
+                    <h5>Tính Năng</h5>
+                    <ul class="footer-links">
+                        <li><a href="#features">Ma Trận 5 Lớp</a></li>
+                        <li><a href="#presets">4 Chế Độ 1 Chạm</a></li>
+                        <li><a href="#simulator">Trình Giả Lập DDoS</a></li>
+                        <li><a href="#docs">Tài Liệu Cài Đặt</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h5>Tải Về</h5>
+                    <ul class="footer-links">
+                        <li><a href="https://github.com/hoangtuvungcao/Anti_DDoS_Windown/releases/latest/download/WAF-Shield-Windows-Release.zip">Bản Release .ZIP</a></li>
+                        <li><a href="https://github.com/hoangtuvungcao/Anti_DDoS_Windown">GitHub Repository</a></li>
+                        <li><a href="#download">PowerShell One-Liner</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h5>Dự Án</h5>
+                    <ul class="footer-links">
+                        <li><a href="https://github.com/hoangtuvungcao/Anti_DDoS_Windown/blob/main/README.md">Tài Liệu Chi Tiết</a></li>
+                        <li><a href="https://github.com/hoangtuvungcao/Anti_DDoS_Windown/issues">Báo Lỗi / Đóng Góp</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <div>© 2026 WAF-Shield Enterprise Cyber Defense. Phát hành theo giấy phép mã nguồn mở.</div>
+                <div>Tối ưu hóa hiển thị 100% cho GitHub Pages</div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript Engine -->
+    <script src="app.js"></script>
+</body>
+</html>

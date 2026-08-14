@@ -9,21 +9,26 @@ import (
 	"waf-game/pkg/packet"
 )
 
-// UDPShield implements Layer 4: Per-Flow + Per-IP Rate Limiting,
-// Deep Packet Inspection, Entropy Analysis, and Two-Way UDP Verification.
-// Protects ALL UDP ports automatically.
+// UDPShield implements Layer 4: 3-Tier Rate Limiting (Flow + IP + Subnet /24),
+// Deep Packet Inspection, Entropy Analysis, Two-Way Verification, and Game Shield.
 type UDPShield struct {
-	// Per-flow rate limiting (Key = srcIP + srcPort)
-	flowBuckets *datastore.ShardedMap[datastore.FlowBucket]
+	// 1. Per-flow rate limiting (Key = srcIP + srcPort)
+	flowBuckets *datastore.ShardedMap[*datastore.FlowBucket]
 
-	// Per-IP aggregate rate limiting (Key = srcIP)
-	ipBuckets *datastore.ShardedMap[datastore.IPBucket]
+	// 2. Per-IP aggregate rate limiting (Key = srcIP)
+	ipBuckets *datastore.ShardedMap[*datastore.IPBucket]
 
-	// Outbound tracking for two-way verification (Key = dstIP + dstPort from server's perspective)
-	outboundSeen *datastore.ShardedMap[int64] // value = last outbound timestamp
+	// 3. Per-Subnet (/24) aggregate rate limiting (Key = srcIP >> 8)
+	subnetBuckets *datastore.ShardedMap[*datastore.SubnetBucket]
 
-	// Port discovery helper to bypass verification for hosted UDP services
+	// Outbound tracking for two-way verification
+	outboundSeen *datastore.ShardedMap[int64]
+
+	// Port discovery helper
 	Discovery *PortDiscovery
+
+	// Game protocol shield (Layer 4.5)
+	GameShield *GameShield
 
 	// DPI signatures
 	signatures []Signature
@@ -32,6 +37,7 @@ type UDPShield struct {
 	flowPPS       float64
 	flowBPS       float64
 	ipPPS         float64
+	subnetPPS     float64
 	blacklistDur  time.Duration
 	dpiEnabled    bool
 	entropyCheck  bool
@@ -47,91 +53,122 @@ type Signature struct {
 }
 
 // NewUDPShield creates a new UDP Shield module.
-func NewUDPShield(flowPPS, flowBPS, ipPPS float64, blacklistDur time.Duration) *UDPShield {
+func NewUDPShield(flowPPS, flowBPS, ipPPS, subnetPPS float64, blacklistDur time.Duration, gameRules []CustomGameRule) *UDPShield {
+	if subnetPPS <= 0 {
+		subnetPPS = 500
+	}
+
 	return &UDPShield{
-		flowBuckets:  datastore.NewShardedMap[datastore.FlowBucket](200000),
-		ipBuckets:    datastore.NewShardedMap[datastore.IPBucket](50000),
-		outboundSeen: datastore.NewShardedMap[int64](100000),
-		flowPPS:      flowPPS,
-		flowBPS:      flowBPS,
-		ipPPS:        ipPPS,
-		blacklistDur: blacklistDur,
-		signatures:   defaultSignatures(),
+		flowBuckets:   datastore.NewShardedMap[*datastore.FlowBucket](200000),
+		ipBuckets:     datastore.NewShardedMap[*datastore.IPBucket](50000),
+		subnetBuckets: datastore.NewShardedMap[*datastore.SubnetBucket](20000),
+		outboundSeen:  datastore.NewShardedMap[int64](100000),
+		GameShield:    NewGameShield(gameRules),
+		flowPPS:       flowPPS,
+		flowBPS:       flowBPS,
+		ipPPS:         ipPPS,
+		subnetPPS:     subnetPPS,
+		blacklistDur:  blacklistDur,
+		signatures:    defaultSignatures(),
 	}
 }
 
-// ProcessUDP handles a UDP packet through the protection pipeline.
+// ProcessUDP handles a UDP packet through the 3-tier protection pipeline.
 func (us *UDPShield) ProcessUDP(pkt *packet.Packet, rawBuf []byte) FilterResult {
 	flowKey := pkt.FlowKey()
 	ipKey := pkt.IPFlowKey()
+	subnetKey := uint64(pkt.SrcIPUint32() >> 8)
 
-	// Step 1: Check if IP is blacklisted (fast path)
+	// Step 1: Fast check: is this IP blacklisted?
 	if entry, ok := us.ipBuckets.Get(ipKey); ok {
 		if entry.Value.IsBlacklisted() {
 			return FilterDrop
 		}
 	}
 
-	// Step 2: Check if flow is blacklisted (fast path)
+	// Step 2: Fast check: is this Subnet (/24) blacklisted?
+	if entry, ok := us.subnetBuckets.Get(subnetKey); ok {
+		if entry.Value.IsBlacklisted() {
+			return FilterDrop
+		}
+	}
+
+	// Step 3: Fast check: is this Flow blacklisted?
 	if entry, ok := us.flowBuckets.Get(flowKey); ok {
 		if entry.Value.IsBlacklisted() {
 			return FilterDrop
 		}
 	}
 
-	// Step 3: Two-way verification (War Mode only)
-	if us.twowayEnabled {
-		isListening := false
-		if us.Discovery != nil {
-			isListening = us.Discovery.IsListening(pkt.DstPort, false)
-		}
-		if !isListening && !us.verifyTwoWay(pkt) {
+	// Step 4: Check Two-Way verification (if enforced in War Mode)
+	isVerifiedClient := us.verifyTwoWay(pkt)
+	if us.twowayEnabled && !isVerifiedClient {
+		// In strict two-way mode, unverified inbound UDP is heavily throttled
+		unverifiedIPEntry, _ := us.ipBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+			return datastore.NewIPBucket(15) // Max 15 PPS for unverified UDP
+		})
+		if !unverifiedIPEntry.Value.Allow() {
 			return FilterDrop
 		}
 	}
 
-	// Step 4: DPI — check payload signature
+	// Step 5: Game Protocol & Query Flood Shield (Layer 4.5)
+	if us.GameShield != nil && pkt.PayloadLen > 0 {
+		payload := rawBuf[pkt.PayloadOffset : pkt.PayloadOffset+pkt.PayloadLen]
+		if res := us.GameShield.CheckGamePacket(pkt, payload); res == FilterDrop {
+			return FilterDrop
+		}
+	}
+
+	// Step 6: DPI — check payload signature
 	if us.dpiEnabled && pkt.PayloadLen > 0 {
 		if !us.checkDPI(pkt, rawBuf) {
 			return FilterDrop
 		}
 	}
 
-	// Step 5: Entropy analysis (War Mode only)
+	// Step 7: Entropy analysis (War Mode only)
 	if us.entropyCheck && pkt.PayloadLen > 0 {
 		if !us.checkEntropy(rawBuf, pkt.PayloadOffset, pkt.PayloadLen) {
 			return FilterDrop
 		}
 	}
 
-	// Step 6: Per-Flow rate limit
-	flowEntry, _ := us.flowBuckets.GetOrCreate(flowKey, func() datastore.FlowBucket {
+	// Step 8: Per-Flow rate limit (Tier 1)
+	flowEntry, _ := us.flowBuckets.GetOrCreate(flowKey, func() *datastore.FlowBucket {
 		return datastore.NewFlowBucket(us.flowPPS, us.flowBPS)
 	})
 
 	pktSize := pkt.TotalLen
 	if !flowEntry.Value.Allow(pktSize) {
-		flowEntry.Value.Blacklist(us.blacklistDur)
 		return FilterDrop
 	}
 
-	// Step 7: Per-IP aggregate rate limit
-	ipEntry, _ := us.ipBuckets.GetOrCreate(ipKey, func() datastore.IPBucket {
+	// Step 9: Per-IP aggregate rate limit (Tier 2)
+	ipEntry, _ := us.ipBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
 		return datastore.NewIPBucket(us.ipPPS)
 	})
 
 	if !ipEntry.Value.Allow() {
-		ipEntry.Value.Blacklist(us.blacklistDur)
+		return FilterDrop
+	}
+
+	// Step 10: Per-Subnet (/24) aggregate rate limit (Tier 3 - defeats distributed botnets)
+	subnetEntry, _ := us.subnetBuckets.GetOrCreate(subnetKey, func() *datastore.SubnetBucket {
+		return datastore.NewSubnetBucket(us.subnetPPS)
+	})
+
+	if !subnetEntry.Value.Allow() {
 		return FilterDrop
 	}
 
 	return FilterPass
 }
 
+
+
 // TrackOutbound records an outbound UDP packet from the server.
-// Called from the outbound tracking goroutine.
 func (us *UDPShield) TrackOutbound(dstIP [4]byte, dstPort uint16) {
-	// Key = destination IP + port (which is the client's IP + port from server's view)
 	key := uint64(dstIP[0])<<24 | uint64(dstIP[1])<<16 | uint64(dstIP[2])<<8 | uint64(dstIP[3])
 	key = key<<16 | uint64(dstPort)
 	us.outboundSeen.Set(key, time.Now().UnixNano())
@@ -147,26 +184,23 @@ func (us *UDPShield) verifyTwoWay(pkt *packet.Packet) bool {
 // checkDPI verifies packet payload against known signatures.
 func (us *UDPShield) checkDPI(pkt *packet.Packet, rawBuf []byte) bool {
 	if pkt.PayloadLen == 0 {
-		return false // Zero-length payload in DPI mode = suspicious
+		return false
 	}
 
 	payload := rawBuf[pkt.PayloadOffset : pkt.PayloadOffset+pkt.PayloadLen]
 
-	// If we have port-specific signatures, check those first
 	for _, sig := range us.signatures {
 		if sig.Port != 0 && sig.Port != pkt.DstPort {
 			continue
 		}
 		if sig.Port == 0 {
-			continue // Skip generic signatures for targeted check
+			continue
 		}
 		if matchSignature(payload, sig) {
-			return true // Matches known game protocol
+			return true
 		}
 	}
 
-	// If no port-specific match required, allow through
-	// (DPI is advisory — only block known-bad patterns)
 	return true
 }
 
@@ -183,13 +217,11 @@ func matchSignature(payload []byte, sig Signature) bool {
 }
 
 // checkEntropy performs Shannon entropy analysis on payload.
-// Returns false (drop) if entropy indicates random junk or null flood.
 func (us *UDPShield) checkEntropy(rawBuf []byte, offset, length int) bool {
 	if length == 0 {
 		return false
 	}
 
-	// Analyze first 256 bytes of payload (or less)
 	analyzeLen := length
 	if analyzeLen > 256 {
 		analyzeLen = 256
@@ -198,21 +230,19 @@ func (us *UDPShield) checkEntropy(rawBuf []byte, offset, length int) bool {
 	data := rawBuf[offset : offset+analyzeLen]
 	entropy := shannonEntropy(data)
 
-	// Drop if entropy > 7.5 (near-random noise — likely junk/encrypted flood)
-	if entropy > 7.5 {
+	// Drop if entropy > 7.6 (random noise / junk flood)
+	if entropy > 7.6 {
 		return false
 	}
 
-	// Drop if entropy < 1.0 (too uniform — null flood or repeat pattern)
-	if entropy < 1.0 && analyzeLen >= 8 {
+	// Drop if entropy < 0.9 (null flood or repetitive pattern)
+	if entropy < 0.9 && analyzeLen >= 8 {
 		return false
 	}
 
 	return true
 }
 
-// shannonEntropy calculates Shannon entropy of a byte slice.
-// Returns value between 0 (uniform) and 8 (maximum randomness).
 func shannonEntropy(data []byte) float64 {
 	if len(data) == 0 {
 		return 0
@@ -253,10 +283,13 @@ func (us *UDPShield) SetTwoWay(enabled bool) {
 }
 
 // SetRateLimits updates rate limiting thresholds.
-func (us *UDPShield) SetRateLimits(flowPPS, flowBPS, ipPPS float64) {
+func (us *UDPShield) SetRateLimits(flowPPS, flowBPS, ipPPS, subnetPPS float64) {
 	us.flowPPS = flowPPS
 	us.flowBPS = flowBPS
 	us.ipPPS = ipPPS
+	if subnetPPS > 0 {
+		us.subnetPPS = subnetPPS
+	}
 }
 
 // AddSignature adds a DPI signature.
@@ -269,18 +302,22 @@ func (us *UDPShield) AddSignature(name string, port uint16, offset int, magic []
 	})
 }
 
-// SweepFlows cleans up expired flow and IP entries.
+// SweepFlows cleans up expired flow, IP, subnet, and outbound entries.
 func (us *UDPShield) SweepFlows(ttl time.Duration) (flowsRemoved, ipsRemoved, outboundRemoved int64) {
 	flowsRemoved = us.flowBuckets.Sweep(ttl)
 	ipsRemoved = us.ipBuckets.Sweep(ttl)
+	_ = us.subnetBuckets.Sweep(ttl)
 	outboundRemoved = us.outboundSeen.Sweep(ttl)
+	if us.GameShield != nil {
+		_ = us.GameShield.Sweep(ttl)
+	}
 	return
 }
 
 // GetBlacklistedCount returns approximate count of blacklisted flows.
 func (us *UDPShield) GetBlacklistedCount() int64 {
 	var count int64
-	us.flowBuckets.ForEach(func(key uint64, entry *datastore.Entry[datastore.FlowBucket]) bool {
+	us.flowBuckets.ForEach(func(key uint64, entry *datastore.Entry[*datastore.FlowBucket]) bool {
 		if entry.Value.IsBlacklisted() {
 			count++
 		}
@@ -289,18 +326,19 @@ func (us *UDPShield) GetBlacklistedCount() int64 {
 	return count
 }
 
+
 // GetFlowCount returns total tracked flows.
 func (us *UDPShield) GetFlowCount() int64 {
 	return us.flowBuckets.Count()
 }
 
-// GetBlacklist returns a list of blacklisted IPs and flows.
+// GetBlacklist returns a list of blacklisted IPs, Subnets, and flows.
 func (us *UDPShield) GetBlacklist() []string {
 	var list []string
 	now := time.Now().UnixNano()
 
 	// Check IP buckets
-	us.ipBuckets.ForEach(func(key uint64, entry *datastore.Entry[datastore.IPBucket]) bool {
+	us.ipBuckets.ForEach(func(key uint64, entry *datastore.Entry[*datastore.IPBucket]) bool {
 		if entry.Value.IsBlacklisted() {
 			val := entry.Value
 			ip := fmt.Sprintf("%d.%d.%d.%d", byte(key>>24), byte(key>>16), byte(key>>8), byte(key))
@@ -313,8 +351,22 @@ func (us *UDPShield) GetBlacklist() []string {
 		return len(list) < 8
 	})
 
+	// Check Subnet buckets
+	us.subnetBuckets.ForEach(func(key uint64, entry *datastore.Entry[*datastore.SubnetBucket]) bool {
+		if entry.Value.IsBlacklisted() {
+			val := entry.Value
+			subnet := fmt.Sprintf("%d.%d.%d.0/24", byte(key>>16), byte(key>>8), byte(key))
+			rem := time.Duration(val.BlacklistUntil - now).Truncate(time.Second)
+			if rem < 0 {
+				rem = 0
+			}
+			list = append(list, fmt.Sprintf("%-22s │ Subnet/24│ %s", subnet, rem))
+		}
+		return len(list) < 8
+	})
+
 	// Check Flow buckets
-	us.flowBuckets.ForEach(func(key uint64, entry *datastore.Entry[datastore.FlowBucket]) bool {
+	us.flowBuckets.ForEach(func(key uint64, entry *datastore.Entry[*datastore.FlowBucket]) bool {
 		if entry.Value.IsBlacklisted() {
 			val := entry.Value
 			ipVal := uint32(key >> 16)
@@ -332,6 +384,7 @@ func (us *UDPShield) GetBlacklist() []string {
 	return list
 }
 
+
 // GetFlowPPS returns the current UDP per-flow PPS limit.
 func (us *UDPShield) GetFlowPPS() float64 {
 	return us.flowPPS
@@ -340,6 +393,11 @@ func (us *UDPShield) GetFlowPPS() float64 {
 // GetIPPPS returns the current UDP per-IP PPS limit.
 func (us *UDPShield) GetIPPPS() float64 {
 	return us.ipPPS
+}
+
+// GetSubnetPPS returns the current UDP per-subnet PPS limit.
+func (us *UDPShield) GetSubnetPPS() float64 {
+	return us.subnetPPS
 }
 
 // IsEntropyEnabled returns whether entropy check is active.
@@ -354,3 +412,4 @@ func defaultSignatures() []Signature {
 		{Name: "raknet", Port: 0, Offset: 0, Bytes: []byte{0x00, 0xFF, 0xFF, 0x00, 0xFE, 0xFE, 0xFE, 0xFE}},
 	}
 }
+

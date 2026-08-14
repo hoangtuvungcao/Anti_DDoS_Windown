@@ -10,8 +10,9 @@ import (
 
 // Protocol constants
 const (
-	ProtoTCP uint8 = 6
-	ProtoUDP uint8 = 17
+	ProtoICMP uint8 = 1
+	ProtoTCP  uint8 = 6
+	ProtoUDP  uint8 = 17
 )
 
 // TCP flag constants
@@ -26,12 +27,12 @@ const (
 
 // Errors
 var (
-	ErrTooShort       = errors.New("packet too short for IPv4 header")
-	ErrNotIPv4        = errors.New("not an IPv4 packet")
-	ErrBadIHL         = errors.New("invalid IP header length")
-	ErrTCPTooShort    = errors.New("packet too short for TCP header")
-	ErrUDPTooShort    = errors.New("packet too short for UDP header")
-	ErrTruncated      = errors.New("packet truncated: total length exceeds buffer")
+	ErrTooShort    = errors.New("packet too short for IPv4 header")
+	ErrNotIPv4     = errors.New("not an IPv4 packet")
+	ErrBadIHL      = errors.New("invalid IP header length")
+	ErrTCPTooShort = errors.New("packet too short for TCP header")
+	ErrUDPTooShort = errors.New("packet too short for UDP header")
+	ErrTruncated   = errors.New("packet truncated: total length exceeds buffer")
 )
 
 // Packet holds parsed packet fields on the stack.
@@ -45,9 +46,13 @@ type Packet struct {
 	Flags      uint8   // 3 bits: Reserved, DF, MF
 	FragOffset uint16  // 13 bits fragment offset
 	TTL        uint8
-	Protocol   uint8   // 6=TCP, 17=UDP
+	Protocol   uint8   // 1=ICMP, 6=TCP, 17=UDP
 	SrcIP      [4]byte
 	DstIP      [4]byte
+
+	// ICMP fields (valid when Protocol == ProtoICMP)
+	ICMPType uint8
+	ICMPCode uint8
 
 	// TCP fields (valid when Protocol == ProtoTCP)
 	SrcPort    uint16
@@ -60,6 +65,7 @@ type Packet struct {
 
 	// UDP fields (valid when Protocol == ProtoUDP)
 	UDPLength uint16
+
 
 	// Payload info
 	IPHeaderLen    int // Actual IP header byte length
@@ -121,6 +127,8 @@ func Parse(buf []byte, pkt *Packet) error {
 		return parseTCP(buf, transportStart, pkt)
 	case ProtoUDP:
 		return parseUDP(buf, transportStart, pkt)
+	case ProtoICMP:
+		return parseICMP(buf, transportStart, pkt)
 	default:
 		// Unknown protocol — set payload to everything after IP header
 		pkt.TransHeaderLen = 0
@@ -133,6 +141,22 @@ func Parse(buf []byte, pkt *Packet) error {
 
 	return nil
 }
+
+func parseICMP(buf []byte, offset int, pkt *Packet) error {
+	if len(buf) < offset+4 {
+		return ErrTooShort
+	}
+	pkt.ICMPType = buf[offset]
+	pkt.ICMPCode = buf[offset+1]
+	pkt.TransHeaderLen = 4
+	pkt.PayloadOffset = offset + 4
+	pkt.PayloadLen = int(pkt.TotalLen) - pkt.PayloadOffset
+	if pkt.PayloadLen < 0 {
+		pkt.PayloadLen = 0
+	}
+	return nil
+}
+
 
 func parseTCP(buf []byte, offset int, pkt *Packet) error {
 	// Minimum TCP header: 20 bytes

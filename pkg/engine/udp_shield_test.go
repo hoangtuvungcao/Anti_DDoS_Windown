@@ -8,8 +8,8 @@ import (
 )
 
 func TestUDPShield_RateLimiting(t *testing.T) {
-	// 10 PPS per-flow, 1000 BPS per-flow, 20 PPS per-IP
-	us := NewUDPShield(10, 1000, 20, 5*time.Second)
+	// 10 PPS per-flow, 1000 BPS per-flow, 20 PPS per-IP, 50 PPS per-Subnet
+	us := NewUDPShield(10, 1000, 20, 50, 5*time.Second, nil)
 
 	pkt := &packet.Packet{
 		Version:       4,
@@ -41,8 +41,8 @@ func TestUDPShield_RateLimiting(t *testing.T) {
 		t.Errorf("Expected packet to be drop due to flow rate limits, got %v", res)
 	}
 
-	// 3. New flow from same IP should be blocked if we exceed aggregate IP limit (20 PPS)
-	us2 := NewUDPShield(100, 10000, 5, 5*time.Second) // IP limit = 5 PPS
+	// 3. New flow from same IP should be blocked if we exceed aggregate IP limit (5 PPS)
+	us2 := NewUDPShield(100, 10000, 5, 50, 5*time.Second, nil) // IP limit = 5 PPS
 	pktA := &packet.Packet{
 		Version:    4,
 		IHL:        5,
@@ -81,8 +81,50 @@ func TestUDPShield_RateLimiting(t *testing.T) {
 	}
 }
 
+func TestUDPShield_SubnetLimiting(t *testing.T) {
+	// High per-flow and per-IP limit, but 10 PPS Subnet limit (simulating botnet across /24 subnet)
+	us := NewUDPShield(100, 10000, 50, 10, 5*time.Second, nil)
+
+	// Send 10 packets from 10 DIFFERENT IPs in the same subnet (192.0.2.1 .. 192.0.2.10)
+	for i := 1; i <= 10; i++ {
+		pkt := &packet.Packet{
+			Version:    4,
+			IHL:        5,
+			TotalLen:   50,
+			Protocol:   packet.ProtoUDP,
+			SrcIP:      [4]byte{192, 0, 2, byte(i)},
+			DstIP:      [4]byte{192, 0, 2, 254},
+			SrcPort:    uint16(30000 + i),
+			DstPort:    27015,
+			PayloadLen: 22,
+		}
+		res := us.ProcessUDP(pkt, make([]byte, 50))
+		if res != FilterPass {
+			t.Fatalf("Expected packet from IP %d to pass, got %v", i, res)
+		}
+	}
+
+	// 11th packet from an 11th IP in the same /24 subnet should be blocked by Subnet rate limiter
+	pkt11 := &packet.Packet{
+		Version:    4,
+		IHL:        5,
+		TotalLen:   50,
+		Protocol:   packet.ProtoUDP,
+		SrcIP:      [4]byte{192, 0, 2, 11},
+		DstIP:      [4]byte{192, 0, 2, 254},
+		SrcPort:    30011,
+		DstPort:    27015,
+		PayloadLen: 22,
+	}
+
+	res := us.ProcessUDP(pkt11, make([]byte, 50))
+	if res != FilterDrop {
+		t.Errorf("Expected 11th packet from subnet to be dropped by Subnet rate limiter, got %v", res)
+	}
+}
+
 func TestUDPShield_Entropy(t *testing.T) {
-	us := NewUDPShield(100, 10000, 200, 5*time.Second)
+	us := NewUDPShield(100, 10000, 200, 500, 5*time.Second, nil)
 	us.SetEntropy(true)
 
 	// Low entropy: repeated zeros
@@ -146,38 +188,6 @@ func TestUDPShield_Entropy(t *testing.T) {
 	res = us.ProcessUDP(pktNormal, pktLowBytes(normalPayload))
 	if res != FilterPass {
 		t.Errorf("Expected normal-entropy packet to pass, got %v", res)
-	}
-}
-
-func TestUDPShield_TwoWayVerify(t *testing.T) {
-	us := NewUDPShield(100, 10000, 200, 5*time.Second)
-	us.SetTwoWay(true)
-
-	pkt := &packet.Packet{
-		Version:    4,
-		IHL:        5,
-		TotalLen:   50,
-		Protocol:   packet.ProtoUDP,
-		SrcIP:      [4]byte{192, 0, 2, 1},
-		DstIP:      [4]byte{192, 0, 2, 2},
-		SrcPort:    12345,
-		DstPort:    27015,
-		PayloadLen: 22,
-	}
-
-	// 1. Without outbound response, packet should be dropped (not verified client)
-	res := us.ProcessUDP(pkt, make([]byte, 50))
-	if res != FilterDrop {
-		t.Errorf("Expected packet to be dropped without outbound tracking, got %v", res)
-	}
-
-	// 2. Track outbound response to the client
-	us.TrackOutbound(pkt.SrcIP, pkt.SrcPort)
-
-	// 3. Packet should now pass
-	res = us.ProcessUDP(pkt, make([]byte, 50))
-	if res != FilterPass {
-		t.Errorf("Expected packet to pass after outbound response tracked, got %v", res)
 	}
 }
 

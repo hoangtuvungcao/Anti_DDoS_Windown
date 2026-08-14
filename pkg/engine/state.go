@@ -9,14 +9,15 @@ import (
 type SystemMode int32
 
 const (
-	ModePeace SystemMode = 0
-	ModeWar   SystemMode = 1
+	ModePeace      SystemMode = 0
+	ModeElevated   SystemMode = 1
+	ModeWar        SystemMode = 2
+	ModeUnderSiege SystemMode = 3
 )
 
-// StateManager controls dynamic switching between Peace and War modes.
-// Monitors total traffic volume and automatically escalates protection.
+// StateManager controls dynamic switching between Peace, Elevated, War, and Under Siege modes.
 type StateManager struct {
-	mode atomic.Int32 // 0=Peace, 1=War
+	mode     atomic.Int32 // 0=Peace, 1=Elevated, 2=War, 3=UnderSiege
 	isManual atomic.Bool  // true if manually overridden
 
 	// Trigger thresholds
@@ -39,6 +40,16 @@ type StateManager struct {
 
 // NewStateManager creates a new dynamic state manager.
 func NewStateManager(triggerPPS, triggerBPS uint64, cooldownSec int64) *StateManager {
+	if triggerPPS == 0 {
+		triggerPPS = 5000
+	}
+	if triggerBPS == 0 {
+		triggerBPS = 52428800 // 50 MB/s
+	}
+	if cooldownSec == 0 {
+		cooldownSec = 60
+	}
+
 	return &StateManager{
 		triggerPPS:  triggerPPS,
 		triggerBPS:  triggerBPS,
@@ -54,29 +65,37 @@ func (sm *StateManager) SetCallbacks(onWar, onPeace func()) {
 }
 
 // RecordPacket records an incoming packet for traffic monitoring.
-// Called on every packet in the pipeline.
 func (sm *StateManager) RecordPacket(size uint16) {
 	sm.currentPPS.Add(1)
 	sm.currentBPS.Add(uint64(size))
 }
 
 // Evaluate checks current traffic levels and switches mode if needed.
-// Should be called once per second.
 func (sm *StateManager) Evaluate() {
 	pps := sm.currentPPS.Swap(0)
 	bps := sm.currentBPS.Swap(0)
 
-	// If in manual override, skip automatic evaluation/transitions.
 	if sm.isManual.Load() {
 		return
 	}
 
 	currentMode := SystemMode(sm.mode.Load())
 
-	switch currentMode {
-	case ModePeace:
-		// Check if we should escalate to War Mode
-		if pps > sm.triggerPPS || bps > sm.triggerBPS {
+	// Dynamic multi-stage evaluation
+	switch {
+	case pps >= sm.triggerPPS*3 || bps >= sm.triggerBPS*3:
+		// Under Siege level
+		if currentMode != ModeUnderSiege {
+			sm.mode.Store(int32(ModeUnderSiege))
+			sm.warStartTime = time.Now().Unix()
+			if sm.onWarMode != nil {
+				sm.onWarMode()
+			}
+		}
+
+	case pps >= sm.triggerPPS || bps >= sm.triggerBPS:
+		// War level
+		if currentMode != ModeWar && currentMode != ModeUnderSiege {
 			sm.mode.Store(int32(ModeWar))
 			sm.warStartTime = time.Now().Unix()
 			if sm.onWarMode != nil {
@@ -84,14 +103,24 @@ func (sm *StateManager) Evaluate() {
 			}
 		}
 
-	case ModeWar:
-		// Check if we should de-escalate to Peace Mode
-		elapsed := time.Now().Unix() - sm.warStartTime
-		if elapsed >= sm.cooldownSec && pps <= sm.triggerPPS/2 && bps <= sm.triggerBPS/2 {
-			sm.mode.Store(int32(ModePeace))
-			if sm.onPeaceMode != nil {
-				sm.onPeaceMode()
+	case pps >= sm.triggerPPS/2 || bps >= sm.triggerBPS/2:
+		// Elevated level
+		if currentMode == ModePeace {
+			sm.mode.Store(int32(ModeElevated))
+		}
+
+	default:
+		// Traffic is low — check cooldown before de-escalating
+		if currentMode >= ModeWar {
+			elapsed := time.Now().Unix() - sm.warStartTime
+			if elapsed >= sm.cooldownSec && pps <= sm.triggerPPS/3 && bps <= sm.triggerBPS/3 {
+				sm.mode.Store(int32(ModePeace))
+				if sm.onPeaceMode != nil {
+					sm.onPeaceMode()
+				}
 			}
+		} else if currentMode == ModeElevated {
+			sm.mode.Store(int32(ModePeace))
 		}
 	}
 }
@@ -109,7 +138,7 @@ func (sm *StateManager) ForceMode(mode SystemMode) {
 		return
 	}
 
-	if mode == ModeWar {
+	if mode >= ModeWar {
 		sm.warStartTime = time.Now().Unix()
 		if sm.onWarMode != nil {
 			sm.onWarMode()
@@ -132,9 +161,9 @@ func (sm *StateManager) IsManual() bool {
 	return sm.isManual.Load()
 }
 
-// IsWarMode returns true if currently in War Mode.
+// IsWarMode returns true if currently in War Mode or Under Siege.
 func (sm *StateManager) IsWarMode() bool {
-	return sm.mode.Load() == int32(ModeWar)
+	return sm.mode.Load() >= int32(ModeWar)
 }
 
 // GetCurrentPPS returns the PPS from the last evaluation window.
@@ -146,3 +175,4 @@ func (sm *StateManager) GetCurrentPPS() uint64 {
 func (sm *StateManager) GetCurrentBPS() uint64 {
 	return sm.currentBPS.Load()
 }
+
