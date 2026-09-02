@@ -193,9 +193,9 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 
 	// 3. Handle SYN packets (Connection Initiation)
 	if pkt.IsSYN() {
-		// A. Check SYN rate limiter per IP (15 SYNs per second)
+		// A. Check SYN rate limiter per IP (uses tcp_conn_rate_per_ip from config)
 		synEntry, _ := ts.synBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-			return datastore.NewIPBucket(15)
+			return datastore.NewIPBucket(float64(connRateLimitIP))
 		})
 		if !synEntry.Value.Allow() {
 			synEntry.Value.Blacklist(ts.blacklistDur)

@@ -206,22 +206,22 @@ func (us *UDPShield) verifyTwoWay(pkt *packet.Packet) bool {
 }
 
 // checkDPI verifies packet payload against known signatures.
+// Returns false (DROP) if a signature is matched on a blocked port.
+// Port=0 in a signature means "match on any port".
 func (us *UDPShield) checkDPI(pkt *packet.Packet, rawBuf []byte) bool {
 	if pkt.PayloadLen == 0 {
-		return false
+		return true
 	}
 
 	payload := rawBuf[pkt.PayloadOffset : pkt.PayloadOffset+pkt.PayloadLen]
 
 	for _, sig := range us.signatures {
+		// sig.Port == 0 means match on any destination port
 		if sig.Port != 0 && sig.Port != pkt.DstPort {
 			continue
 		}
-		if sig.Port == 0 {
-			continue
-		}
 		if matchSignature(payload, sig) {
-			return true
+			return false // DROP: matched a blocked signature
 		}
 	}
 
@@ -457,10 +457,10 @@ func (us *UDPShield) IsEntropyEnabled() bool {
 	return us.entropyCheck
 }
 
-// defaultSignatures returns built-in game protocol signatures
+// defaultSignatures returns built-in DPI block signatures.
+// NOTE: Game protocol headers (Source Engine, RakNet) are handled by
+// GameShield (query flood limiting), NOT blocked here via DPI.
+// Add custom signatures via config.json custom_rules.
 func defaultSignatures() []Signature {
-	return []Signature{
-		{Name: "source_engine", Port: 0, Offset: 0, Bytes: []byte{0xFF, 0xFF, 0xFF, 0xFF}},
-		{Name: "raknet", Port: 0, Offset: 0, Bytes: []byte{0x00, 0xFF, 0xFF, 0x00, 0xFE, 0xFE, 0xFE, 0xFE}},
-	}
+	return []Signature{}
 }

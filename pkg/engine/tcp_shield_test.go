@@ -125,11 +125,12 @@ func TestTCPShield_IPConnectionLimits(t *testing.T) {
 }
 
 func TestTCPShield_SYNRateLimiting(t *testing.T) {
-	ts := NewTCPShield(nil, 100, 50, 100, 5)
+	// connRateLimitIP=15 → SYN bucket allows 15 PPS; 16th should be dropped
+	ts := NewTCPShield(nil, 100, 15, 100, 5)
 	ts.blacklistDur = 1 * time.Second
 	var addr windivert.Address
 
-	// IP 192.0.2.1 floods SYNs (limit is 15 PPS)
+	// IP 192.0.2.1 floods SYNs (limit is 15 PPS via connRateLimitIP)
 	for i := 0; i < 15; i++ {
 		syn := &packet.Packet{
 			Version:  4,
