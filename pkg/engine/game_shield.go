@@ -94,7 +94,9 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 			})
 
 			if !bucket.Value.Allow() {
-				bucket.Value.Blacklist(60 * time.Second)
+				if bucket.Value.ViolationCount() >= 25 {
+					bucket.Value.Blacklist(30 * time.Second)
+				}
 				return FilterDrop
 			}
 		}
@@ -111,7 +113,9 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 			})
 
 			if !bucket.Value.Allow() {
-				bucket.Value.Blacklist(60 * time.Second)
+				if bucket.Value.ViolationCount() >= 8 {
+					bucket.Value.Blacklist(30 * time.Second)
+				}
 				return FilterDrop
 			}
 		}
@@ -125,11 +129,13 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		// Verify RakNet offline message data ID magic at offset 17
 		if isRakNetMagic(payload[17:]) {
 			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-				return datastore.NewIPBucket(10)
+				return datastore.NewIPBucket(20) // Generous 20 PPS limit
 			})
 
 			if !bucket.Value.Allow() {
-				bucket.Value.Blacklist(60 * time.Second)
+				if bucket.Value.ViolationCount() >= 30 {
+					bucket.Value.Blacklist(30 * time.Second)
+				}
 				return FilterDrop
 			}
 		}
@@ -138,11 +144,13 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 	// 4. Check Repeated Byte Floods (e.g. 1000 bytes of 0x00, 0xFF, 'A', or 0x55 synthetic bot spam)
 	if len(payload) >= 32 && isRepeatedBytePattern(payload) {
 		bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-			return datastore.NewIPBucket(3) // Strict 3 PPS for repeated byte garbage
+			return datastore.NewIPBucket(10) // 10 PPS for repeated byte
 		})
 
 		if !bucket.Value.Allow() {
-			bucket.Value.Blacklist(120 * time.Second)
+			if bucket.Value.ViolationCount() >= 20 {
+				bucket.Value.Blacklist(60 * time.Second)
+			}
 			return FilterDrop
 		}
 	}

@@ -202,7 +202,9 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 			return datastore.NewIPBucket(float64(connRateLimitIP))
 		})
 		if !synEntry.Value.Allow() {
-			synEntry.Value.Blacklist(ts.blacklistDur)
+			if synEntry.Value.ViolationCount() >= 40 {
+				synEntry.Value.Blacklist(30 * time.Second)
+			}
 			return FilterDrop
 		}
 
@@ -211,7 +213,9 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 			return datastore.NewSubnetBucket(150)
 		})
 		if !subnetSynEntry.Value.Allow() {
-			subnetSynEntry.Value.Blacklist(ts.blacklistDur)
+			if subnetSynEntry.Value.ViolationCount() >= 100 {
+				subnetSynEntry.Value.Blacklist(30 * time.Second)
+			}
 			return FilterDrop
 		}
 
@@ -220,7 +224,9 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 			return datastore.NewIPBucket(float64(connRateLimitIP * 2))
 		})
 		if !rateEntry.Value.Allow() {
-			rateEntry.Value.Blacklist(ts.blacklistDur)
+			if rateEntry.Value.ViolationCount() >= 40 {
+				rateEntry.Value.Blacklist(30 * time.Second)
+			}
 			return FilterDrop
 		}
 

@@ -170,7 +170,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	})
 
 	if !ipEntry.Value.Allow() {
-		if ipEntry.Value.ViolationCount() >= 8 {
+		if ipEntry.Value.ViolationCount() >= 16 {
 			ipEntry.Value.Blacklist(us.blacklistDur)
 		}
 		return FilterDrop, DropIPRate
@@ -182,7 +182,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	})
 
 	if !subnetEntry.Value.Allow() {
-		if subnetEntry.Value.ViolationCount() >= 16 {
+		if subnetEntry.Value.ViolationCount() >= 32 {
 			subnetEntry.Value.Blacklist(us.blacklistDur)
 		}
 		return FilterDrop, DropSubnetRate
