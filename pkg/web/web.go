@@ -1163,6 +1163,11 @@ const embeddedHTML = `<!DOCTYPE html>
         let dropHistory = new Array(maxPoints).fill(0);
         let rawLogs = [];
 
+        // Security: escape HTML to prevent XSS from server data
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
+
         function formatPPS(pps) {
             if (!pps) pps = 0;
             if (pps >= 1000000) return (pps/1000000).toFixed(2) + ' M PPS';
@@ -1391,11 +1396,13 @@ const embeddedHTML = `<!DOCTYPE html>
                     return;
                 }
                 tbody.innerHTML = data.bans.map(b => {
-                    const cleanIP = b.replace(/\[BAN\]\s*/i, '').trim();
+                    const safeB = escHtml(b);
+                    const rawIP = b.split('│')[0].trim();
+                    const safeIP = encodeURIComponent(rawIP);
                     return '<tr>' +
-                        '<td><b style="color:var(--red);">' + b + '</b></td>' +
+                        '<td><b style="color:var(--red);">' + safeB + '</b></td>' +
                         '<td><span class="nav-badge badge-war">BANNED</span></td>' +
-                        '<td><button class="btn btn-success" style="padding:4px 10px; font-size:11px;" onclick="unbanSpecific(\'' + cleanIP + '\')">Unblock</button></td>' +
+                        '<td><button class="btn btn-success" style="padding:4px 10px; font-size:11px;" onclick="unbanSpecific(decodeURIComponent(\'' + safeIP + '\'))">Unblock</button></td>' +
                     '</tr>';
                 }).join('');
             } catch (e) {}
@@ -1411,10 +1418,12 @@ const embeddedHTML = `<!DOCTYPE html>
                     return;
                 }
                 tbody.innerHTML = data.whitelist.map(ip => {
+                    const safeIP = escHtml(ip);
+                    const encIP = encodeURIComponent(ip);
                     return '<tr>' +
-                        '<td><b style="color:var(--green);">' + ip + '</b></td>' +
+                        '<td><b style="color:var(--green);">' + safeIP + '</b></td>' +
                         '<td><span class="nav-badge badge-peace">ALWAYS PASS</span></td>' +
-                        '<td><button class="btn btn-danger" style="padding:4px 10px; font-size:11px;" onclick="removeWhitelist(\'' + ip + '\')">Remove</button></td>' +
+                        '<td><button class="btn btn-danger" style="padding:4px 10px; font-size:11px;" onclick="removeWhitelist(decodeURIComponent(\'' + encIP + '\'))">Remove</button></td>' +
                     '</tr>';
                 }).join('');
             } catch (e) {}
@@ -1496,9 +1505,9 @@ const embeddedHTML = `<!DOCTYPE html>
                 const color = ev.Level === 2 ? 'var(--red)' : (ev.Level === 3 ? 'var(--yellow)' : 'var(--cyan)');
                 const timeStr = ev.Timestamp ? new Date(ev.Timestamp).toLocaleTimeString() : '--:--:--';
                 return '<div class="log-entry">' +
-                    '<span class="log-time">' + timeStr + '</span>' +
-                    '<span class="log-cat" style="color:' + color + '">[' + ev.Category + ']</span>' +
-                    '<span>' + ev.Message + '</span>' +
+                    '<span class="log-time">' + escHtml(timeStr) + '</span>' +
+                    '<span class="log-cat" style="color:' + color + '">[' + escHtml(ev.Category) + ']</span>' +
+                    '<span>' + escHtml(ev.Message) + '</span>' +
                 '</div>';
             }).join('');
         }

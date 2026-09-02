@@ -117,8 +117,13 @@ func (f *Layer1Filter) Check(pkt *packet.Packet) (FilterResult, int) {
 		}
 	}
 
-	// Rule 8: Unknown / Malicious IP Protocols (only allow ICMP=1, IGMP=2, TCP=6, UDP=17)
-	if pkt.Protocol != packet.ProtoTCP && pkt.Protocol != packet.ProtoUDP && pkt.Protocol != packet.ProtoICMP && pkt.Protocol != 2 {
+	// Rule 8: Block uncommon/malicious IP protocols not needed by typical servers
+	// Allow: ICMP(1), IGMP(2), TCP(6), UDP(17)
+	// Block: GRE(47), ESP(50), AH(51), EIGRP(88), OSPF(89), SCTP(132), etc.
+	if pkt.Protocol != packet.ProtoTCP &&
+		pkt.Protocol != packet.ProtoUDP &&
+		pkt.Protocol != packet.ProtoICMP &&
+		pkt.Protocol != 2 { // IGMP
 		return FilterDrop, 8
 	}
 

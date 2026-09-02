@@ -377,19 +377,15 @@ func (e *Engine) worker(id int) {
 		}
 
 		// ═══ GEOIP COUNTRY FILTER (O(log N) Binary Search) ═══
-		shouldGeoBlock := false
-		if int(e.geoIPMode.Load()) == GeoIPModeOn {
-			shouldGeoBlock = true
-		} else if int(e.geoIPMode.Load()) == GeoIPModeAuto && e.state.IsWarMode() {
-			shouldGeoBlock = true
-		}
+		geoMode := int(e.geoIPMode.Load()) // load once
+		shouldGeoBlock := geoMode == GeoIPModeOn || (geoMode == GeoIPModeAuto && e.state.IsWarMode())
 
 		if shouldGeoBlock {
 			srcIP := net.IP(pkt.SrcIP[:])
 			if !e.geoIP.IsVietnamIP(srcIP) {
-
 				isResponse := false
 				if pkt.Protocol == packet.ProtoTCP {
+					// Allow established TCP responses (non-SYN) to pass through
 					if !pkt.IsSYN() {
 						isResponse = true
 					}
@@ -400,6 +396,7 @@ func (e *Engine) worker(id int) {
 				if !isResponse {
 					e.metrics.Layer1Drops.Add(1)
 					e.metrics.DroppedPPS.Add(1)
+					e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen)) // Bug fix: missing BPS counter
 					continue
 				}
 			}
