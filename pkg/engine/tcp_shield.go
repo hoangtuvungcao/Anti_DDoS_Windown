@@ -283,10 +283,11 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 				HasPayload:       pkt.PayloadLen > 0,
 				IsHalfOpen:       false,
 			})
+			// Bug fix: use locked Set() to avoid data race on shared counter
 			connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() int32 { return 0 })
-			connEntry.Value++
+			ts.connPerIP.Set(ipKey, connEntry.Value+1)
 			subnetConnEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() int32 { return 0 })
-			subnetConnEntry.Value++
+			ts.connPerSubnet.Set(subnetKey, subnetConnEntry.Value+1)
 			return FilterPass
 		}
 	}
@@ -351,10 +352,10 @@ func (ts *TCPShield) ReapIdleConnections() int64 {
 		subnetKey := uint64(ipVal >> 8)
 
 		if cEntry, ok := ts.connPerIP.Get(ipKey); ok && cEntry.Value > 0 {
-			cEntry.Value--
+			ts.connPerIP.Set(ipKey, cEntry.Value-1)
 		}
 		if sEntry, ok := ts.connPerSubnet.Get(subnetKey); ok && sEntry.Value > 0 {
-			sEntry.Value--
+			ts.connPerSubnet.Set(subnetKey, sEntry.Value-1)
 		}
 	})
 }
@@ -387,10 +388,10 @@ func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 		subnetKey := uint64(ipVal >> 8)
 
 		if cEntry, ok := ts.connPerIP.Get(ipKey); ok && cEntry.Value > 0 {
-			cEntry.Value--
+			ts.connPerIP.Set(ipKey, cEntry.Value-1)
 		}
 		if sEntry, ok := ts.connPerSubnet.Get(subnetKey); ok && sEntry.Value > 0 {
-			sEntry.Value--
+			ts.connPerSubnet.Set(subnetKey, sEntry.Value-1)
 		}
 	}
 
@@ -422,10 +423,10 @@ func (ts *TCPShield) ReapSlowlorisConnections() int64 {
 		ipKey := uint64(ipVal)
 		subnetKey := uint64(ipVal >> 8)
 		if cEntry, ok := ts.connPerIP.Get(ipKey); ok && cEntry.Value > 0 {
-			cEntry.Value--
+			ts.connPerIP.Set(ipKey, cEntry.Value-1)
 		}
 		if sEntry, ok := ts.connPerSubnet.Get(subnetKey); ok && sEntry.Value > 0 {
-			sEntry.Value--
+			ts.connPerSubnet.Set(subnetKey, sEntry.Value-1)
 		}
 	}
 

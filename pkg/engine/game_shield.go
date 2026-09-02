@@ -119,14 +119,19 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 
 	// 3. Check Minecraft Bedrock / RakNet Unconnected Ping Floods
 	// Packet 0x01 (ID_UNCONNECTED_PING) or 0x02 (ID_UNCONNECTED_PING_OPEN_CONNECTIONS)
-	if (payload[0] == 0x01 || payload[0] == 0x02) && len(payload) >= 9 {
-		bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-			return datastore.NewIPBucket(10)
-		})
+	// Bug fix: payload[0]==0x01 alone is too broad (matches DNS, DTLS, many protocols).
+	// RakNet pings have magic bytes at offset 17: 0x00FFFF00FEFEFEFEFDFDFDFD12345678
+	if (payload[0] == 0x01 || payload[0] == 0x02) && len(payload) >= 33 {
+		// Verify RakNet offline message data ID magic at offset 17
+		if isRakNetMagic(payload[17:]) {
+			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+				return datastore.NewIPBucket(10)
+			})
 
-		if !bucket.Value.Allow() {
-			bucket.Value.Blacklist(60 * time.Second)
-			return FilterDrop
+			if !bucket.Value.Allow() {
+				bucket.Value.Blacklist(60 * time.Second)
+				return FilterDrop
+			}
 		}
 	}
 
@@ -188,4 +193,21 @@ func isRepeatedBytePattern(payload []byte) bool {
 // Sweep removes expired query rate limiting buckets.
 func (gs *GameShield) Sweep(ttl time.Duration) int64 {
 	return gs.queryBuckets.Sweep(ttl)
+}
+
+// rakNetMagic is the 16-byte offline message data ID used in all RakNet unconnected messages.
+// See: https://wiki.vg/Raknet_Protocol#Unconnected_Ping
+var rakNetMagic = []byte{0x00, 0xFF, 0xFF, 0x00, 0xFE, 0xFE, 0xFE, 0xFE, 0xFD, 0xFD, 0xFD, 0xFD, 0x12, 0x34, 0x56, 0x78}
+
+// isRakNetMagic checks if the data starting at the given offset contains the RakNet magic bytes.
+func isRakNetMagic(data []byte) bool {
+	if len(data) < 16 {
+		return false
+	}
+	for i := 0; i < 16; i++ {
+		if data[i] != rakNetMagic[i] {
+			return false
+		}
+	}
+	return true
 }
