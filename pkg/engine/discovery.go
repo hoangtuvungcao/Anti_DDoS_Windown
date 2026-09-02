@@ -26,12 +26,13 @@ type PortDiscovery struct {
 
 // Windows API constants
 const (
-	tcpTableOwnerPIDListener = 3 // TCP_TABLE_OWNER_PID_LISTENER
-	udpTableOwnerPID         = 1 // UDP_TABLE_OWNER_PID
-	afINET                   = 2 // AF_INET (IPv4)
+	tcpTableOwnerPIDListener = 3  // TCP_TABLE_OWNER_PID_LISTENER
+	udpTableOwnerPID         = 1  // UDP_TABLE_OWNER_PID
+	afINET                   = 2  // AF_INET (IPv4)
+	afINET6                  = 23 // AF_INET6 (IPv6 / Dual-Stack sockets like [::]:8080)
 )
 
-// MIB_TCPROW_OWNER_PID structure
+// MIB_TCPROW_OWNER_PID structure (IPv4)
 type tcpRowOwnerPID struct {
 	State      uint32
 	LocalAddr  uint32
@@ -41,11 +42,31 @@ type tcpRowOwnerPID struct {
 	OwningPid  uint32
 }
 
-// MIB_UDPROW_OWNER_PID structure
+// MIB_TCP6ROW_OWNER_PID structure (IPv6 / Dual-Stack)
+type tcp6RowOwnerPID struct {
+	LocalAddr     [16]byte
+	LocalScopeId  uint32
+	LocalPort     uint32
+	RemoteAddr    [16]byte
+	RemoteScopeId uint32
+	RemotePort    uint32
+	State         uint32
+	OwningPid     uint32
+}
+
+// MIB_UDPROW_OWNER_PID structure (IPv4)
 type udpRowOwnerPID struct {
 	LocalAddr uint32
 	LocalPort uint32
 	OwningPid uint32
+}
+
+// MIB_UDP6ROW_OWNER_PID structure (IPv6 / Dual-Stack)
+type udp6RowOwnerPID struct {
+	LocalAddr    [16]byte
+	LocalScopeId uint32
+	LocalPort    uint32
+	OwningPid    uint32
 }
 
 var (
@@ -80,7 +101,7 @@ func (pd *PortDiscovery) GetPorts() *PortSet {
 
 // IsListening checks if a port is being listened on for the given protocol.
 func (pd *PortDiscovery) IsListening(port uint16, isTCP bool) bool {
-	if pd.IsExcluded(port) {
+	if pd.IsExcluded(port) || IsManagementPort(port) {
 		return true
 	}
 	ports := pd.current.Load()
@@ -129,47 +150,33 @@ func (pd *PortDiscovery) scan() *PortSet {
 		UDP: make(map[uint16]bool),
 	}
 
-	pd.scanTCP(ps)
-	pd.scanUDP(ps)
+	// Scan both IPv4 and IPv6 / Dual-stack listeners
+	pd.scanTCP4(ps)
+	pd.scanTCP6(ps)
+	pd.scanUDP4(ps)
+	pd.scanUDP6(ps)
 
 	return ps
 }
 
-func (pd *PortDiscovery) scanTCP(ps *PortSet) {
+func decodePort(raw uint32) uint16 {
+	// dwLocalPort is stored in network byte order in first 16 bits
+	return uint16(((raw & 0xFF) << 8) | ((raw >> 8) & 0xFF))
+}
+
+func (pd *PortDiscovery) scanTCP4(ps *PortSet) {
 	var size uint32
-
-	// First call: get required buffer size
-	procGetExtendedTcpTab.Call(
-		0,
-		uintptr(unsafe.Pointer(&size)),
-		1, // bOrder = TRUE
-		afINET,
-		tcpTableOwnerPIDListener,
-		0,
-	)
-
+	procGetExtendedTcpTab.Call(0, uintptr(unsafe.Pointer(&size)), 1, afINET, tcpTableOwnerPIDListener, 0)
 	if size == 0 {
 		return
 	}
 
 	buf := make([]byte, size)
-	ret, _, _ := procGetExtendedTcpTab.Call(
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(unsafe.Pointer(&size)),
-		1,
-		afINET,
-		tcpTableOwnerPIDListener,
-		0,
-	)
-
-	if ret != 0 {
+	ret, _, _ := procGetExtendedTcpTab.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)), 1, afINET, tcpTableOwnerPIDListener, 0)
+	if ret != 0 || len(buf) < 4 {
 		return
 	}
 
-	// Parse table: first 4 bytes = dwNumEntries
-	if len(buf) < 4 {
-		return
-	}
 	numEntries := *(*uint32)(unsafe.Pointer(&buf[0]))
 	rowSize := unsafe.Sizeof(tcpRowOwnerPID{})
 
@@ -179,47 +186,55 @@ func (pd *PortDiscovery) scanTCP(ps *PortSet) {
 			break
 		}
 		row := (*tcpRowOwnerPID)(unsafe.Pointer(&buf[offset]))
-		// Port is in network byte order (big-endian), need to swap
-		port := uint16(row.LocalPort>>8 | row.LocalPort<<8)
-		if !pd.exclude[port] {
+		port := decodePort(row.LocalPort)
+		if port > 0 && !pd.exclude[port] {
 			ps.TCP[port] = true
 		}
 	}
 }
 
-func (pd *PortDiscovery) scanUDP(ps *PortSet) {
+func (pd *PortDiscovery) scanTCP6(ps *PortSet) {
 	var size uint32
-
-	procGetExtendedUdpTab.Call(
-		0,
-		uintptr(unsafe.Pointer(&size)),
-		1,
-		afINET,
-		udpTableOwnerPID,
-		0,
-	)
-
+	procGetExtendedTcpTab.Call(0, uintptr(unsafe.Pointer(&size)), 1, afINET6, tcpTableOwnerPIDListener, 0)
 	if size == 0 {
 		return
 	}
 
 	buf := make([]byte, size)
-	ret, _, _ := procGetExtendedUdpTab.Call(
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(unsafe.Pointer(&size)),
-		1,
-		afINET,
-		udpTableOwnerPID,
-		0,
-	)
-
-	if ret != 0 {
+	ret, _, _ := procGetExtendedTcpTab.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)), 1, afINET6, tcpTableOwnerPIDListener, 0)
+	if ret != 0 || len(buf) < 4 {
 		return
 	}
 
-	if len(buf) < 4 {
+	numEntries := *(*uint32)(unsafe.Pointer(&buf[0]))
+	rowSize := unsafe.Sizeof(tcp6RowOwnerPID{})
+
+	for i := uint32(0); i < numEntries; i++ {
+		offset := 4 + uintptr(i)*rowSize
+		if offset+rowSize > uintptr(len(buf)) {
+			break
+		}
+		row := (*tcp6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
+		port := decodePort(row.LocalPort)
+		if port > 0 && !pd.exclude[port] {
+			ps.TCP[port] = true
+		}
+	}
+}
+
+func (pd *PortDiscovery) scanUDP4(ps *PortSet) {
+	var size uint32
+	procGetExtendedUdpTab.Call(0, uintptr(unsafe.Pointer(&size)), 1, afINET, udpTableOwnerPID, 0)
+	if size == 0 {
 		return
 	}
+
+	buf := make([]byte, size)
+	ret, _, _ := procGetExtendedUdpTab.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)), 1, afINET, udpTableOwnerPID, 0)
+	if ret != 0 || len(buf) < 4 {
+		return
+	}
+
 	numEntries := *(*uint32)(unsafe.Pointer(&buf[0]))
 	rowSize := unsafe.Sizeof(udpRowOwnerPID{})
 
@@ -229,9 +244,39 @@ func (pd *PortDiscovery) scanUDP(ps *PortSet) {
 			break
 		}
 		row := (*udpRowOwnerPID)(unsafe.Pointer(&buf[offset]))
-		port := uint16(row.LocalPort>>8 | row.LocalPort<<8)
-		if !pd.exclude[port] {
+		port := decodePort(row.LocalPort)
+		if port > 0 && !pd.exclude[port] {
 			ps.UDP[port] = true
 		}
 	}
 }
+
+func (pd *PortDiscovery) scanUDP6(ps *PortSet) {
+	var size uint32
+	procGetExtendedUdpTab.Call(0, uintptr(unsafe.Pointer(&size)), 1, afINET6, udpTableOwnerPID, 0)
+	if size == 0 {
+		return
+	}
+
+	buf := make([]byte, size)
+	ret, _, _ := procGetExtendedUdpTab.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)), 1, afINET6, udpTableOwnerPID, 0)
+	if ret != 0 || len(buf) < 4 {
+		return
+	}
+
+	numEntries := *(*uint32)(unsafe.Pointer(&buf[0]))
+	rowSize := unsafe.Sizeof(udp6RowOwnerPID{})
+
+	for i := uint32(0); i < numEntries; i++ {
+		offset := 4 + uintptr(i)*rowSize
+		if offset+rowSize > uintptr(len(buf)) {
+			break
+		}
+		row := (*udp6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
+		port := decodePort(row.LocalPort)
+		if port > 0 && !pd.exclude[port] {
+			ps.UDP[port] = true
+		}
+	}
+}
+
