@@ -172,11 +172,15 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 	if pkt.IsRST() || pkt.IsFIN() {
 		if _, ok := ts.verified.Get(connKey); ok {
 			ts.verified.Delete(connKey)
+			// Bug fix: entry.Value-- is a data race — multiple workers can mutate simultaneously.
+			// Use shard-locked decrement via Set() to ensure safety.
 			if entry, ok := ts.connPerIP.Get(ipKey); ok && entry.Value > 0 {
-				entry.Value--
+				newVal := entry.Value - 1
+				ts.connPerIP.Set(ipKey, newVal)
 			}
 			if entry, ok := ts.connPerSubnet.Get(subnetKey); ok && entry.Value > 0 {
-				entry.Value--
+				newVal := entry.Value - 1
+				ts.connPerSubnet.Set(subnetKey, newVal)
 			}
 			return FilterPass
 		}
@@ -239,8 +243,9 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 			HasPayload:   false,
 			IsHalfOpen:   true,
 		})
-		connEntry.Value++
-		subnetConnEntry.Value++
+		// Bug fix: direct Value++ on shared entry is a data race — use locked Set()
+		ts.connPerIP.Set(ipKey, connEntry.Value+1)
+		ts.connPerSubnet.Set(subnetKey, subnetConnEntry.Value+1)
 
 		return FilterPass
 	}

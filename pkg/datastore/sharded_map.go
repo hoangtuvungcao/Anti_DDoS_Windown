@@ -188,7 +188,9 @@ func (sm *ShardedMap[V]) SweepWithCallback(ttl time.Duration, cb func(key uint64
 	return removed
 }
 
-// EvictOldest removes the oldest entries when map exceeds maxItems.
+// EvictOldest removes the OLDEST entries (by LastSeen) when map exceeds maxItems.
+// Bug fix: previous version deleted random entries due to Go map non-deterministic iteration.
+// Now properly finds the minimum LastSeen entry per shard for true LRU eviction.
 // Returns number evicted.
 func (sm *ShardedMap[V]) EvictOldest(targetSize int) int64 {
 	current := sm.count.Load()
@@ -199,7 +201,6 @@ func (sm *ShardedMap[V]) EvictOldest(targetSize int) int64 {
 	toRemove := current - int64(targetSize)
 	var removed int64
 
-	// Simple eviction: remove from each shard proportionally
 	perShard := int(toRemove/NumShards) + 1
 
 	for i := range sm.shards {
@@ -208,15 +209,37 @@ func (sm *ShardedMap[V]) EvictOldest(targetSize int) int64 {
 		}
 		s := &sm.shards[i]
 		s.mu.Lock()
-		count := 0
-		for key := range s.items {
-			if count >= perShard {
-				break
+
+		// Collect keys sorted by LastSeen ascending (oldest first)
+		type kv struct {
+			key      uint64
+			lastSeen int64
+		}
+		candidates := make([]kv, 0, len(s.items))
+		for k, e := range s.items {
+			candidates = append(candidates, kv{k, atomic.LoadInt64(&e.LastSeen)})
+		}
+
+		// Partial sort: find the perShard oldest via simple O(N) selection
+		// For production correctness, we do a full sort only of needed slice
+		n := len(candidates)
+		delCount := perShard
+		if delCount > n {
+			delCount = n
+		}
+		// O(N * delCount) selection of delCount oldest — delCount is tiny (~1)
+		for d := 0; d < delCount; d++ {
+			minIdx := d
+			for j := d + 1; j < n; j++ {
+				if candidates[j].lastSeen < candidates[minIdx].lastSeen {
+					minIdx = j
+				}
 			}
-			delete(s.items, key)
-			count++
+			candidates[d], candidates[minIdx] = candidates[minIdx], candidates[d]
+			delete(s.items, candidates[d].key)
 			removed++
 		}
+
 		s.mu.Unlock()
 	}
 

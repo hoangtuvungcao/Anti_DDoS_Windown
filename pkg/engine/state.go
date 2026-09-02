@@ -210,7 +210,10 @@ func (sm *StateManager) ForceMode(mode SystemMode) {
 	}
 }
 
-// ResetToAuto releases manual override and triggers immediate evaluation.
+// ResetToAuto releases manual override and triggers an immediate evaluation.
+// NOTE: Evaluate() will Swap(0) currentPPS/currentBPS which resets the 1-second accumulator.
+// This is acceptable here since the user explicitly changed mode \u2014 a clean-slate evaluation
+// is preferred over waiting up to 1 second for the next stateEvaluator tick.
 func (sm *StateManager) ResetToAuto() {
 	sm.isManual.Store(false)
 	sm.Evaluate()
