@@ -130,6 +130,9 @@ func (ad *AutoDefense) classifyAttackVector() {
 			vectors = append(vectors, VectorSubnetBotnet)
 		}
 	}
+	if ad.metrics.SnapEntropy.Load() > 20 {
+		vectors = append(vectors, VectorUdpEntropy)
+	}
 	if ad.metrics.SnapReflection.Load() > 20 {
 		vectors = append(vectors, VectorUdpAmplification)
 	}
@@ -139,7 +142,8 @@ func (ad *AutoDefense) classifyAttackVector() {
 	if ad.metrics.SnapOutOfState.Load() > 20 {
 		vectors = append(vectors, VectorTcpOutOfState)
 	}
-	if ad.metrics.SnapL3.Load() > 50 && ad.metrics.SnapOutOfState.Load() <= 20 {
+	// Bug fix: was requiring SnapOutOfState<=20 to detect SYN flood, but SYN flood + OOS can coexist
+	if ad.metrics.SnapL3.Load() > 50 {
 		vectors = append(vectors, VectorSynFlood)
 	}
 	if ad.metrics.SnapL1.Load() > 50 {

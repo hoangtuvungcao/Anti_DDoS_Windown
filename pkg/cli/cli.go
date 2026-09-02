@@ -436,7 +436,7 @@ func (d *Dashboard) inputLoop() {
 					if !newVal {
 						stateStr = "DISABLED"
 					}
-					d.setFlashMessage(fmt.Sprintf("Deep Protocol Shield (DPI): %s", stateStr))
+					d.setFlashMessage(fmt.Sprintf("Game Protocol Shield (GameShield): %s", stateStr))
 					d.render()
 				}
 
@@ -786,7 +786,7 @@ func (d *Dashboard) renderSettingsPage(sb *strings.Builder) {
 	if !d.cfg.PeaceMode.EnableGameShield {
 		dpiShieldStatus = red + "OFF" + reset
 	}
-	row4 := fmt.Sprintf("  %s[7]%s Geo-IP Defense:      %s%-6s%s %s[8]%s Deep Protocol DPI:  %s",
+	row4 := fmt.Sprintf("  %s[7]%s Geo-IP Defense:      %s%-6s%s %s[8]%s Game Protocol Shield:%s",
 		yellow+bold, reset, white+bold, modeName(d.eng.GetGeoIPMode()), reset, yellow+bold, reset, dpiShieldStatus)
 	renderLine(sb, row4, 68)
 
