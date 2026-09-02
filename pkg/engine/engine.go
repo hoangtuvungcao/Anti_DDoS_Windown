@@ -525,6 +525,9 @@ func (e *Engine) sweeper() {
 	tcpReapTicker := time.NewTicker(2 * time.Second)
 	defer tcpReapTicker.Stop()
 
+	slowlorisTicker := time.NewTicker(10 * time.Second) // Slowloris detection needs 15s threshold
+	defer slowlorisTicker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -533,6 +536,10 @@ func (e *Engine) sweeper() {
 		case <-tcpReapTicker.C:
 			e.tcpShield.ReapIdleConnections()
 			e.tcpShield.ReapHalfOpenAndZeroPayload()
+
+		case <-slowlorisTicker.C:
+			// Bug fix: ReapSlowlorisConnections was never called — Slowloris attacks could hold connections forever
+			e.tcpShield.ReapSlowlorisConnections()
 
 		case <-e.stopCh:
 			return

@@ -163,12 +163,12 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		}
 	}
 
-	// 1. Drop TCP packets with invalid flag combinations
+	// 2. Drop TCP packets with invalid flag combinations
 	if (pkt.IsSYN() && pkt.IsFIN()) || (pkt.IsSYN() && pkt.IsRST()) {
 		return FilterDrop
 	}
 
-	// 2. Handle RST/FIN packets (Teardown)
+	// 3. Handle RST/FIN packets (Teardown)
 	if pkt.IsRST() || pkt.IsFIN() {
 		if _, ok := ts.verified.Get(connKey); ok {
 			ts.verified.Delete(connKey)
@@ -191,7 +191,7 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		return FilterPass
 	}
 
-	// 3. Handle SYN packets (Connection Initiation)
+	// 4. Handle SYN packets (Connection Initiation)
 	if pkt.IsSYN() {
 		// A. Check SYN rate limiter per IP (uses tcp_conn_rate_per_ip from config)
 		synEntry, _ := ts.synBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
@@ -245,7 +245,7 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		return FilterPass
 	}
 
-	// 4. Handle Established Connection Packets (ACK, PSH-ACK, Data)
+	// 5. Handle Established Connection Packets (ACK, PSH-ACK, Data)
 	if entry, ok := ts.verified.Get(connKey); ok {
 		state := &entry.Value
 		state.LastActivity = now
@@ -264,7 +264,7 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		return FilterPass
 	}
 
-	// 5. Out-of-State Packet Handling (Unverified Connection Scrubber)
+	// 6. Out-of-State Packet Handling (Unverified Connection Scrubber)
 
 	// Check if this ACK contains a valid Cryptographic SYN Cookie response (RFC 4987)
 	if pkt.IsACK() && pkt.AckNum > 0 {
@@ -501,6 +501,20 @@ func (ts *TCPShield) GetBlacklist() []string {
 			list = append(list, fmt.Sprintf("%-22s │ TCP SYN  │ %s", ip, rem))
 		}
 		return len(list) < 8
+	})
+
+	// Bug fix: also include out-of-state blacklisted IPs
+	ts.outOfStateBuckets.ForEach(func(key uint64, entry *datastore.Entry[*datastore.IPBucket]) bool {
+		if entry.Value.IsBlacklisted() {
+			val := entry.Value
+			ip := fmt.Sprintf("%d.%d.%d.%d", byte(key>>24), byte(key>>16), byte(key>>8), byte(key))
+			rem := time.Duration(val.BlacklistUntil - now).Truncate(time.Second)
+			if rem < 0 {
+				rem = 0
+			}
+			list = append(list, fmt.Sprintf("%-22s │ TCP OOS  │ %s", ip, rem))
+		}
+		return len(list) < 16
 	})
 
 	return list

@@ -180,7 +180,7 @@ func isPrivateOrLocal(ipVal uint32) bool {
 	if ipVal >= 0x0A000000 && ipVal <= 0x0AFFFFFF {
 		return true
 	}
-	// 172.16.0.0/12 (Private: 0xAC100000 - 0xAC1FFFFF)
+	// 172.16.0.0/12 (Private: 0xAC100000 - 0xAC1FFFFF = 172.16.0.0 - 172.31.255.255)
 	if ipVal >= 0xAC100000 && ipVal <= 0xAC1FFFFF {
 		return true
 	}
@@ -190,6 +190,14 @@ func isPrivateOrLocal(ipVal uint32) bool {
 	}
 	// 169.254.0.0/16 (Link Local: 0xA9FE0000 - 0xA9FEFFFF)
 	if ipVal >= 0xA9FE0000 && ipVal <= 0xA9FEFFFF {
+		return true
+	}
+	// 100.64.0.0/10 (Shared Address Space RFC 6598: 0x64400000 - 0x647FFFFF)
+	if ipVal >= 0x64400000 && ipVal <= 0x647FFFFF {
+		return true
+	}
+	// 255.255.255.255 (Broadcast)
+	if ipVal == 0xFFFFFFFF {
 		return true
 	}
 	return false
