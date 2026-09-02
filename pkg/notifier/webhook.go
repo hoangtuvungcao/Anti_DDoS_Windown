@@ -199,7 +199,6 @@ func (n *Notifier) sendTelegram(alert AlertPayload) error {
 		prefix, alert.Title, alert.Description, alert.Vector, alert.PeakPPS, mbps,
 	)
 
-
 	body := map[string]interface{}{
 		"chat_id":    n.cfg.TelegramChatID,
 		"text":       text,
