@@ -254,13 +254,13 @@ func (us *UDPShield) checkEntropy(rawBuf []byte, offset, length int) bool {
 	data := rawBuf[offset : offset+analyzeLen]
 	entropy := shannonEntropy(data)
 
-	// Drop if entropy > 7.6 (random noise / junk flood)
-	if entropy > 7.6 {
+	// Drop if entropy is pure flat random noise (> 7.98) on large buffers
+	if entropy > 7.98 && analyzeLen >= 128 {
 		return false
 	}
 
-	// Drop if entropy < 0.9 (null flood or repetitive pattern)
-	if entropy < 0.9 && analyzeLen >= 8 {
+	// Drop if entropy < 0.5 (null flood or repetitive pattern)
+	if entropy < 0.5 && analyzeLen >= 16 {
 		return false
 	}
 

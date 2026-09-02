@@ -19,18 +19,18 @@ func TestGameShield_A2SQueryLimiting(t *testing.T) {
 		DstPort:  27015,
 	}
 
-	// 5 queries should pass (5 PPS limit)
-	for i := 0; i < 5; i++ {
+	// 60 queries should pass (60 PPS limit for Steam server browser)
+	for i := 0; i < 60; i++ {
 		res := gs.CheckGamePacket(pkt, a2sPayload)
 		if res != FilterPass {
 			t.Fatalf("Expected A2S query %d to pass, got %v", i, res)
 		}
 	}
 
-	// 6th query should be dropped
+	// 61st query should be dropped
 	res := gs.CheckGamePacket(pkt, a2sPayload)
 	if res != FilterDrop {
-		t.Errorf("Expected 6th A2S query to be dropped, got %v", res)
+		t.Errorf("Expected 61st A2S query to be dropped, got %v", res)
 	}
 }
 
@@ -48,17 +48,17 @@ func TestGameShield_SAMPQueryLimiting(t *testing.T) {
 		DstPort:  7777,
 	}
 
-	// 5 queries should pass
-	for i := 0; i < 5; i++ {
+	// 30 queries should pass (30 PPS limit)
+	for i := 0; i < 30; i++ {
 		res := gs.CheckGamePacket(pkt, sampPayload)
 		if res != FilterPass {
 			t.Fatalf("Expected SAMP query %d to pass, got %v", i, res)
 		}
 	}
 
-	// 6th query should be dropped
+	// 31st query should be dropped
 	res := gs.CheckGamePacket(pkt, sampPayload)
 	if res != FilterDrop {
-		t.Errorf("Expected 6th SAMP query to be dropped, got %v", res)
+		t.Errorf("Expected 31st SAMP query to be dropped, got %v", res)
 	}
 }

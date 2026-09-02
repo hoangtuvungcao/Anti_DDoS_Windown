@@ -90,11 +90,11 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		// 0x57 = A2S_SERVERQUERY_GETCHALLENGE ('W'), 0x69 = A2S_PING ('i'), 0x71 = A2A_PING ('q')
 		if op == 0x54 || op == 0x55 || op == 0x56 || op == 0x57 || op == 0x69 || op == 0x71 {
 			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-				return datastore.NewIPBucket(5) // Max 5 query packets/sec per IP
+				return datastore.NewIPBucket(60) // 60 queries/sec for Steam server browser
 			})
 
 			if !bucket.Value.Allow() {
-				if bucket.Value.ViolationCount() >= 25 {
+				if bucket.Value.ViolationCount() >= 50 {
 					bucket.Value.Blacklist(30 * time.Second)
 				}
 				return FilterDrop
@@ -109,11 +109,11 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		// 'i' = Info, 'p' = Ping, 'c' = Players, 'r' = Rules, 'd' = Detailed Players
 		if op == 'i' || op == 'p' || op == 'c' || op == 'r' || op == 'd' {
 			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-				return datastore.NewIPBucket(5)
+				return datastore.NewIPBucket(30)
 			})
 
 			if !bucket.Value.Allow() {
-				if bucket.Value.ViolationCount() >= 8 {
+				if bucket.Value.ViolationCount() >= 30 {
 					bucket.Value.Blacklist(30 * time.Second)
 				}
 				return FilterDrop
@@ -129,11 +129,11 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		// Verify RakNet offline message data ID magic at offset 17
 		if isRakNetMagic(payload[17:]) {
 			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-				return datastore.NewIPBucket(20) // Generous 20 PPS limit
+				return datastore.NewIPBucket(50) // 50 PPS limit
 			})
 
 			if !bucket.Value.Allow() {
-				if bucket.Value.ViolationCount() >= 30 {
+				if bucket.Value.ViolationCount() >= 50 {
 					bucket.Value.Blacklist(30 * time.Second)
 				}
 				return FilterDrop
