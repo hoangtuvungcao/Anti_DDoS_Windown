@@ -120,11 +120,15 @@ func (ad *AutoDefense) classifyAttackVector() {
 	if ad.metrics.BotnetDetected.Load() {
 		vectors = append(vectors, VectorSubnetBotnet)
 	}
-	if ad.metrics.SnapL2.Load() > 50 && ad.metrics.SnapSubnet.Load() > 20 {
-		vectors = append(vectors, VectorCarpetBombing)
-	}
-	if ad.metrics.SnapSubnet.Load() > 20 && !ad.metrics.BotnetDetected.Load() {
-		vectors = append(vectors, VectorSubnetBotnet)
+	if ad.metrics.SnapSubnet.Load() > 20 {
+		if ad.metrics.SnapL2.Load() > 50 {
+			// Carpet bombing: many closed ports hit across the subnet — most specific, check first
+			vectors = append(vectors, VectorCarpetBombing)
+		}
+		if !ad.metrics.BotnetDetected.Load() {
+			// Subnet flooding without confirmed global botnet threshold
+			vectors = append(vectors, VectorSubnetBotnet)
+		}
 	}
 	if ad.metrics.SnapReflection.Load() > 20 {
 		vectors = append(vectors, VectorUdpAmplification)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -175,6 +176,8 @@ func (n *Notifier) sendDiscord(alert AlertPayload) error {
 		return err
 	}
 	defer resp.Body.Close()
+	// Drain body to allow HTTP keep-alive connection reuse
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
 }
 
@@ -215,5 +218,7 @@ func (n *Notifier) sendTelegram(alert AlertPayload) error {
 		return err
 	}
 	defer resp.Body.Close()
+	// Drain body to allow HTTP keep-alive connection reuse
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
 }

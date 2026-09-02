@@ -290,10 +290,11 @@ func printBanner() {
 }
 
 func isAdmin() bool {
-	_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
+	f, err := os.Open("\\\\.\\PHYSICALDRIVE0")
 	if err != nil {
 		return false
 	}
+	f.Close() // Bug fix: prevent resource leak
 	return true
 }
 

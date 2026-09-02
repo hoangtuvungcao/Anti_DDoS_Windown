@@ -259,6 +259,12 @@ func Load(path string) (*Config, error) {
 	if cfg.SystemMode == "" {
 		cfg.SystemMode = "AUTO"
 	}
+	if cfg.LogFile == "" {
+		cfg.LogFile = def.LogFile
+	}
+	if cfg.WebDashboard.Port == 0 {
+		cfg.WebDashboard.Port = def.WebDashboard.Port
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -430,7 +436,7 @@ func stripJSONComments(data []byte) []byte {
 				}
 				i++
 			}
-			i++ // Skip closing '/'
+			i += 1 // Skip closing '*', the loop's i++ will skip '/'
 			continue
 		}
 
