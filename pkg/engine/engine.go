@@ -385,10 +385,9 @@ func (e *Engine) worker(id int) {
 			if !e.geoIP.IsVietnamIP(srcIP) {
 				isResponse := false
 				if pkt.Protocol == packet.ProtoTCP {
-					// Allow established TCP responses (non-SYN) to pass through
-					if !pkt.IsSYN() {
-						isResponse = true
-					}
+					// Bug fix: previously used '!pkt.IsSYN()' which allowed foreign ACK/RST/FIN floods to bypass GeoIP!
+					// Now strictly checks if connection was verified (outbound response or established session).
+					isResponse = e.tcpShield.IsVerified(pkt.ConnKey())
 				} else if pkt.Protocol == packet.ProtoUDP {
 					isResponse = e.udpShield.verifyTwoWay(&pkt)
 				}

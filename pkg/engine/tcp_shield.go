@@ -486,6 +486,12 @@ func (ts *TCPShield) ValidateSYNCookie(srcIP [4]byte, dstIP [4]byte, srcPort, ds
 	return false
 }
 
+// IsVerified checks if a TCP connection is established and verified.
+func (ts *TCPShield) IsVerified(connKey uint64) bool {
+	_, ok := ts.verified.Get(connKey)
+	return ok
+}
+
 // GetVerifiedCount returns the number of tracked TCP connections.
 func (ts *TCPShield) GetVerifiedCount() int64 {
 	return ts.verified.Count()

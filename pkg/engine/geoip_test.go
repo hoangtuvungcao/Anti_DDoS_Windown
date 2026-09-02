@@ -18,6 +18,9 @@ func TestGeoIP_BinarySearchLookups(t *testing.T) {
 		"127.0.0.1",      // Loopback
 		"192.168.1.100",  // Private RFC1918
 		"10.0.0.1",       // Private RFC1918
+		"100.64.0.1",     // CGNAT RFC6598 (Vietnam ISPs)
+		"100.127.255.254", // CGNAT RFC6598
+		"255.255.255.255", // Broadcast
 	}
 
 	for _, ipStr := range vnIPs {
