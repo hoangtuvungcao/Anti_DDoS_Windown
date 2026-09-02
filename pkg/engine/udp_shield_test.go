@@ -125,10 +125,11 @@ func TestUDPShield_SubnetLimiting(t *testing.T) {
 
 func TestUDPShieldReportsDropReasonAndBlacklistsRepeatOffender(t *testing.T) {
 	us := NewUDPShield(2, 10000, 100, 100, time.Minute, nil)
+	us.SetStrict(true) // Blacklist is active in War Mode
 	pkt := &packet.Packet{Version: 4, IHL: 5, TotalLen: 40, Protocol: packet.ProtoUDP, SrcIP: [4]byte{203, 0, 113, 9}, SrcPort: 5000, DstPort: 27015}
 	us.ProcessUDP(pkt, make([]byte, 40))
 	us.ProcessUDP(pkt, make([]byte, 40))
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 155; i++ {
 		result, reason := us.ProcessUDPWithReason(pkt, make([]byte, 40))
 		if result != FilterDrop || (reason != DropFlowRate && reason != DropBlacklisted) {
 			t.Fatalf("unexpected mitigation decision: result=%v reason=%v", result, reason)

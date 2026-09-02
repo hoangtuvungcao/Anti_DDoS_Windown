@@ -148,6 +148,17 @@ func (m *ModeManager) applyMode(isWar bool) {
 		}
 	}
 
+	if udpShield != nil {
+		switch mode {
+		case ModeOff:
+			udpShield.SetStrict(false)
+		case ModeOn:
+			udpShield.SetStrict(true)
+		default: // AUTO
+			udpShield.SetStrict(isWar)
+		}
+	}
+
 	if tcpShield != nil {
 		switch mode {
 		case ModeOff:

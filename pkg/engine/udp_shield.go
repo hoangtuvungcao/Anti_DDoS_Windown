@@ -44,6 +44,7 @@ type UDPShield struct {
 	dpiEnabled    bool
 	entropyCheck  bool
 	twowayEnabled bool
+	strict        bool
 }
 
 // Signature defines a magic byte pattern for DPI
@@ -117,14 +118,11 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	// Step 4: Check Two-Way verification (if enforced in War Mode)
 	isVerifiedClient := us.verifyTwoWay(pkt)
 	if twowayEnabled && !isVerifiedClient {
-		// In strict two-way mode, unverified inbound UDP is heavily throttled
+		// In strict two-way mode, unverified inbound UDP is rate-limited without banning
 		unverifiedIPEntry, _ := us.ipBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-			return datastore.NewIPBucket(15) // Max 15 PPS for unverified UDP
+			return datastore.NewIPBucket(60) // Generous 60 PPS for handshake
 		})
 		if !unverifiedIPEntry.Value.Allow() {
-			if unverifiedIPEntry.Value.ViolationCount() >= 8 {
-				unverifiedIPEntry.Value.Blacklist(us.blacklistDur)
-			}
 			return FilterDrop, DropUnverified
 		}
 	}
@@ -158,8 +156,9 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 
 	pktSize := pkt.TotalLen
 	if !flowEntry.Value.Allow(pktSize) {
-		if flowEntry.Value.ViolationCount() >= 8 {
-			flowEntry.Value.Blacklist(us.blacklistDur)
+		// Only blacklist under active War Mode attack with 150+ continuous flood violations
+		if us.strict && flowEntry.Value.ViolationCount() >= 150 {
+			flowEntry.Value.Blacklist(30 * time.Second)
 		}
 		return FilterDrop, DropFlowRate
 	}
@@ -170,8 +169,8 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	})
 
 	if !ipEntry.Value.Allow() {
-		if ipEntry.Value.ViolationCount() >= 16 {
-			ipEntry.Value.Blacklist(us.blacklistDur)
+		if us.strict && ipEntry.Value.ViolationCount() >= 200 {
+			ipEntry.Value.Blacklist(30 * time.Second)
 		}
 		return FilterDrop, DropIPRate
 	}
@@ -182,8 +181,8 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	})
 
 	if !subnetEntry.Value.Allow() {
-		if subnetEntry.Value.ViolationCount() >= 32 {
-			subnetEntry.Value.Blacklist(us.blacklistDur)
+		if us.strict && subnetEntry.Value.ViolationCount() >= 500 {
+			subnetEntry.Value.Blacklist(30 * time.Second)
 		}
 		return FilterDrop, DropSubnetRate
 	}
@@ -310,6 +309,13 @@ func (us *UDPShield) SetTwoWay(enabled bool) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	us.twowayEnabled = enabled
+}
+
+// SetStrict enables or disables strict War Mode mitigation (including flood blacklisting).
+func (us *UDPShield) SetStrict(enabled bool) {
+	us.mu.Lock()
+	defer us.mu.Unlock()
+	us.strict = enabled
 }
 
 // SetRateLimits updates rate limiting thresholds.
