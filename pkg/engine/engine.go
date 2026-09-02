@@ -145,7 +145,7 @@ func DefaultConfig() EngineConfig {
 // NewEngine creates a new firewall engine.
 func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLogger) (*Engine, error) {
 	inHandle, err := windivert.Open(
-		"inbound and (fragment or tcp or udp or icmp or ip)",
+		"inbound and !loopback and (fragment or tcp or udp or icmp or ip)",
 		windivert.LayerNetwork,
 		0, // priority
 		windivert.FlagDefault,
@@ -160,7 +160,7 @@ func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLog
 	inHandle.SetParam(windivert.ParamQueueSize, 67108864) // 64 MB
 
 	outHandle, err := windivert.Open(
-		"outbound and (tcp or udp or icmp)",
+		"outbound and !loopback and (tcp or udp or icmp)",
 		windivert.LayerNetwork,
 		-1,                  // lower priority
 		windivert.FlagSniff, // sniff only — don't capture outbound

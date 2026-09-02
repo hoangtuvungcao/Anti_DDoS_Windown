@@ -186,8 +186,8 @@ func (f *Layer1Filter) checkIPSource(pkt *packet.Packet) (FilterResult, int) {
 		return FilterDrop, 22
 	}
 
-	// Land Attack — source IP equals destination IP
-	if pkt.SrcIP == pkt.DstIP {
+	// Land Attack — source IP equals destination IP (exclude loopback 127.0.0.0/8)
+	if pkt.SrcIP == pkt.DstIP && pkt.SrcIP[0] != 127 {
 		return FilterDrop, 23
 	}
 
