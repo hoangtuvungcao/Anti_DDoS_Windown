@@ -110,6 +110,25 @@ func (fb *FlowBucket) Blacklist(duration time.Duration) {
 	fb.BlacklistUntil = time.Now().Add(duration).UnixNano()
 }
 
+func (fb *FlowBucket) ViolationCount() uint32 {
+	fb.mu.Lock()
+	defer fb.mu.Unlock()
+	return fb.Violations
+}
+
+func (fb *FlowBucket) SetLimits(maxPPS, maxBPS float64) {
+	fb.mu.Lock()
+	defer fb.mu.Unlock()
+	fb.MaxPPS = maxPPS
+	fb.MaxBPS = maxBPS
+	if fb.PacketTokens > maxPPS*2 {
+		fb.PacketTokens = maxPPS * 2
+	}
+	if fb.ByteTokens > maxBPS*2 {
+		fb.ByteTokens = maxBPS * 2
+	}
+}
+
 // IsBlacklisted returns true if the flow is currently blacklisted.
 func (fb *FlowBucket) IsBlacklisted() bool {
 	fb.mu.Lock()
@@ -186,6 +205,21 @@ func (ib *IPBucket) Blacklist(duration time.Duration) {
 	defer ib.mu.Unlock()
 	ib.Blacklisted = true
 	ib.BlacklistUntil = time.Now().Add(duration).UnixNano()
+}
+
+func (ib *IPBucket) ViolationCount() uint32 {
+	ib.mu.Lock()
+	defer ib.mu.Unlock()
+	return ib.Violations
+}
+
+func (ib *IPBucket) SetLimit(maxPPS float64) {
+	ib.mu.Lock()
+	defer ib.mu.Unlock()
+	ib.MaxPPS = maxPPS
+	if ib.PacketTokens > maxPPS*2 {
+		ib.PacketTokens = maxPPS * 2
+	}
 }
 
 // IsBlacklisted returns true if this IP is currently blacklisted.
@@ -268,6 +302,21 @@ func (sb *SubnetBucket) Blacklist(duration time.Duration) {
 	sb.BlacklistUntil = time.Now().Add(duration).UnixNano()
 }
 
+func (sb *SubnetBucket) ViolationCount() uint32 {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.Violations
+}
+
+func (sb *SubnetBucket) SetLimit(maxPPS float64) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	sb.MaxPPS = maxPPS
+	if sb.PacketTokens > maxPPS*2 {
+		sb.PacketTokens = maxPPS * 2
+	}
+}
+
 // IsBlacklisted returns true if this subnet is currently blacklisted.
 func (sb *SubnetBucket) IsBlacklisted() bool {
 	sb.mu.Lock()
@@ -281,5 +330,3 @@ func (sb *SubnetBucket) IsBlacklisted() bool {
 	}
 	return true
 }
-
-

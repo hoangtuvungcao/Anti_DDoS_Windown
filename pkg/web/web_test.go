@@ -45,3 +45,11 @@ func TestWebServer_APIEndpoints(t *testing.T) {
 		t.Errorf("Expected HTTP 200 for dashboard, got %d", wHome.Code)
 	}
 }
+
+func TestStartRejectsUnauthenticatedLANBinding(t *testing.T) {
+	srv := NewServer(WebConfig{Enabled: true, Port: 18081, AllowLAN: true}, nil, nil, nil)
+	if err := srv.Start(); err == nil {
+		srv.Stop()
+		t.Fatal("expected unauthenticated LAN binding to be rejected")
+	}
+}

@@ -1,6 +1,6 @@
 # Hướng Dẫn Kích Hoạt GitHub Pages Cho Trang Chủ Triển Lãm
 
-Thư mục `trangchu/` chứa toàn bộ mã nguồn tĩnh (**HTML5, Vanilla CSS, Pure JavaScript**) của trang chủ triển lãm WAF-Shield Enterprise.
+Thư mục `docs/` chứa toàn bộ mã nguồn tĩnh (**HTML5, Vanilla CSS, Pure JavaScript**) của trang tài liệu WAF-Shield Enterprise.
 
 ---
 
@@ -16,7 +16,7 @@ Thư mục `trangchu/` chứa toàn bộ mã nguồn tĩnh (**HTML5, Vanilla CSS
 3. Vào **Settings** -> **Pages** (ở cột bên trái).
 4. Tại mục **Build and deployment**:
    * **Source**: Chọn `Deploy from a branch`.
-   * **Branch**: Chọn `main` và thư mục `/trangchu` (hoặc chuyển nội dung `trangchu/` ra `docs/` nếu muốn chọn `/docs`).
+   * **Branch**: Chọn `main` và thư mục `/docs`.
 5. Bấm **Save**. Trang chủ của bạn sẽ hoạt động trực tiếp tại:
    **`https://hoangtuvungcao.github.io/Anti_DDoS_Windown/`**
 
@@ -26,7 +26,7 @@ Thư mục `trangchu/` chứa toàn bộ mã nguồn tĩnh (**HTML5, Vanilla CSS
 * Chỉ cần nhấp đúp chuột vào file **`index.html`** để mở ngay trên bất kỳ trình duyệt nào (Chrome, Edge, Firefox).
 * Hoặc chạy với Python HTTP Server:
   ```bash
-  cd trangchu
+  cd docs
   python3 -m http.server 3000
   ```
   Truy cập: `http://localhost:3000`

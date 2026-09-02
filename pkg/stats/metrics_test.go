@@ -15,21 +15,21 @@ func TestMetrics_Snapshot(t *testing.T) {
 	m.Layer4Drops.Add(2)
 
 	// Before snapshot, snap values should be 0
-	if m.SnapPPS != 0 || m.SnapBPS != 0 || m.SnapL1 != 0 {
+	if m.SnapPPS.Load() != 0 || m.SnapBPS.Load() != 0 || m.SnapL1.Load() != 0 {
 		t.Errorf("Expected initial snapshot values to be 0")
 	}
 
 	// Capture snapshot
 	m.Snapshot()
 
-	if m.SnapPPS != 150 {
-		t.Errorf("Expected SnapPPS 150, got %d", m.SnapPPS)
+	if m.SnapPPS.Load() != 150 {
+		t.Errorf("Expected SnapPPS 150, got %d", m.SnapPPS.Load())
 	}
-	if m.SnapBPS != 10240 {
-		t.Errorf("Expected SnapBPS 10240, got %d", m.SnapBPS)
+	if m.SnapBPS.Load() != 10240 {
+		t.Errorf("Expected SnapBPS 10240, got %d", m.SnapBPS.Load())
 	}
-	if m.SnapL1 != 10 || m.SnapL2 != 5 || m.SnapL3 != 3 || m.SnapL4 != 2 {
-		t.Errorf("Snap drops mismatch: L1=%d, L2=%d, L3=%d, L4=%d", m.SnapL1, m.SnapL2, m.SnapL3, m.SnapL4)
+	if m.SnapL1.Load() != 10 || m.SnapL2.Load() != 5 || m.SnapL3.Load() != 3 || m.SnapL4.Load() != 2 {
+		t.Errorf("Snap drops mismatch: L1=%d, L2=%d, L3=%d, L4=%d", m.SnapL1.Load(), m.SnapL2.Load(), m.SnapL3.Load(), m.SnapL4.Load())
 	}
 
 	total := m.TotalDrops()

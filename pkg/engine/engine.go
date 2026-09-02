@@ -5,6 +5,7 @@ import (
 	"net"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"waf-game/pkg/logger"
@@ -26,6 +27,9 @@ const (
 // Engine is the core firewall processing pipeline.
 // Coordinates all 5 layers + dynamic state management + AI AutoDefense.
 type Engine struct {
+	cfg   EngineConfig
+	cfgMu sync.RWMutex
+
 	// WinDivert handles
 	inboundHandle  *windivert.Handle
 	outboundHandle *windivert.Handle
@@ -37,8 +41,8 @@ type Engine struct {
 	tcpShield   *TCPShield     // Layer 3: TCP Shield
 	udpShield   *UDPShield     // Layer 4 & 4.5: UDP & Game Shield
 	state       *StateManager
-	geoIPMode   int
-	entropyMode int
+	geoIPMode   atomic.Int32
+	entropyMode atomic.Int32
 	modeManager *ModeManager
 	geoIP       *GeoIP
 	autoDefense *AutoDefense
@@ -57,6 +61,7 @@ type Engine struct {
 
 	// Logger
 	fastLogger *logger.FastLogger
+	attackCallback func(active bool, vector string, pps, bps, drops uint64)
 }
 
 // EngineConfig holds engine configuration
@@ -77,6 +82,7 @@ type EngineConfig struct {
 	TCPIdleTimeout            int64
 	EnableAmplificationFilter bool
 	EnableGameShield          bool
+	EnableDPIShield           bool
 
 	// War mode settings
 	WarTriggerPPS uint64
@@ -85,6 +91,8 @@ type EngineConfig struct {
 	WarFlowPPS    float64
 	WarIPPPS      float64
 	WarSubnetPPS  float64
+	WarFlowBPS    float64
+	WarEnableDPI  bool
 
 	// Features
 	EntropyMode  int
@@ -117,19 +125,22 @@ func DefaultConfig() EngineConfig {
 		TCPIdleTimeout:            120,
 		EnableAmplificationFilter: true,
 		EnableGameShield:          true,
+		EnableDPIShield:           true,
 		WarTriggerPPS:             5000,
 		WarTriggerBPS:             52428800, // 50 MB/s
 		WarCooldown:               60,
 		WarFlowPPS:                40,
+		WarFlowBPS:                524288,
 		WarIPPPS:                  100,
 		WarSubnetPPS:              250,
+		WarEnableDPI:              true,
 		EntropyMode:               EntropyModeAuto,
+		TwoWayVerify:              true,
 		GeoIPMode:                 GeoIPModeAuto,
 		SystemMode:                "AUTO",
 		WhitelistIPs:              []string{"127.0.0.1"},
 	}
 }
-
 
 // NewEngine creates a new firewall engine.
 func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLogger) (*Engine, error) {
@@ -158,7 +169,6 @@ func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLog
 		inHandle.Close()
 		return nil, fmt.Errorf("failed to open outbound WinDivert handle: %w", err)
 	}
-
 
 	workers := cfg.Workers
 	if workers <= 0 {
@@ -193,6 +203,7 @@ func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLog
 	udpShield.SetEntropy(initialEntropy)
 
 	engine := &Engine{
+		cfg:            cfg,
 		inboundHandle:  inHandle,
 		outboundHandle: outHandle,
 		ipFilter:       ipFilter,
@@ -203,8 +214,6 @@ func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLog
 		state:          stateManager,
 		geoIP:          geoIP,
 		autoDefense:    autoDefense,
-		geoIPMode:      cfg.GeoIPMode,
-		entropyMode:    cfg.EntropyMode,
 		metrics:        metrics,
 		bufPool: sync.Pool{
 			New: func() interface{} {
@@ -217,6 +226,8 @@ func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLog
 		running:    false,
 		fastLogger: fastLog,
 	}
+	engine.geoIPMode.Store(int32(cfg.GeoIPMode))
+	engine.entropyMode.Store(int32(cfg.EntropyMode))
 
 	engine.modeManager = NewModeManager(cfg.SystemMode, stateManager, engine)
 
@@ -226,21 +237,49 @@ func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLog
 				fastLog.Warn("WAR_MODE", "Escalated to WAR MODE — activating strict limits, DPI & Geo-Shield")
 			}
 			engine.modeManager.applyMode(true)
+			if engine.attackCallback != nil {
+				vector := "GENERIC FLOOD"
+				if engine.state.IsBotnetDetected() {
+					vector = string(VectorSubnetBotnet)
+				}
+				engine.attackCallback(true, vector, engine.state.GetCurrentPPS(), engine.state.GetCurrentBPS(), engine.metrics.DroppedPPS.Load())
+			}
 		},
 		func() { // On Peace Mode
 			if fastLog != nil {
 				fastLog.Info("PEACE_MODE", "Restored to PEACE MODE — normal network conditions")
 			}
 			engine.modeManager.applyMode(false)
+			if engine.attackCallback != nil {
+				engine.attackCallback(false, string(engine.autoDefense.GetPrimaryAttackVector()), engine.state.GetCurrentPPS(), engine.state.GetCurrentBPS(), engine.metrics.DroppedPPS.Load())
+			}
 		},
 	)
 
 	return engine, nil
 }
 
+// SetAttackCallback registers a non-blocking incident callback before Start.
+func (e *Engine) SetAttackCallback(callback func(active bool, vector string, pps, bps, drops uint64)) {
+	e.attackCallback = callback
+}
+
+// ConfigurePeaceUDP persists a dashboard preset across War/Peace transitions.
+func (e *Engine) ConfigurePeaceUDP(flowPPS, flowBPS, ipPPS, subnetPPS float64, dpi, game bool) {
+	e.cfgMu.Lock()
+	e.cfg.UDPFlowPPS = flowPPS
+	e.cfg.UDPFlowBPS = flowBPS
+	e.cfg.UDPPerIPPPS = ipPPS
+	e.cfg.SubnetPPS = subnetPPS
+	e.cfg.EnableDPIShield = dpi
+	e.cfg.EnableGameShield = game
+	e.cfgMu.Unlock()
+}
+
 // Start begins packet processing with N worker goroutines.
 func (e *Engine) Start() {
 	e.running = true
+	e.modeManager.ApplyCurrent()
 
 	e.discovery.Start()
 
@@ -318,6 +357,12 @@ func (e *Engine) worker(id int) {
 			continue
 		}
 
+		// Feed telemetry before fast-path decisions so blocked bot traffic still
+		// contributes to attack detection and dashboard input counters.
+		e.state.RecordPacketDetails(pkt.TotalLen, pkt.SrcIPUint32(), pkt.Protocol, pkt.IsSYN())
+		e.metrics.InboundPPS.Add(1)
+		e.metrics.InboundBPS.Add(uint64(pkt.TotalLen))
+
 		// ═══ LAYER 0: Whitelist & Blacklist (Fast Path) ═══
 		action := e.ipFilter.Check(pkt.SrcIP)
 		if action == ActionWhitelist {
@@ -333,9 +378,9 @@ func (e *Engine) worker(id int) {
 
 		// ═══ GEOIP COUNTRY FILTER (O(log N) Binary Search) ═══
 		shouldGeoBlock := false
-		if e.geoIPMode == GeoIPModeOn {
+		if int(e.geoIPMode.Load()) == GeoIPModeOn {
 			shouldGeoBlock = true
-		} else if e.geoIPMode == GeoIPModeAuto && e.state.IsWarMode() {
+		} else if int(e.geoIPMode.Load()) == GeoIPModeAuto && e.state.IsWarMode() {
 			shouldGeoBlock = true
 		}
 
@@ -360,11 +405,6 @@ func (e *Engine) worker(id int) {
 			}
 		}
 
-		// Record traffic volume
-		e.state.RecordPacket(pkt.TotalLen)
-		e.metrics.InboundPPS.Add(1)
-		e.metrics.InboundBPS.Add(uint64(pkt.TotalLen))
-
 		// ═══ LAYER 1: Global Garbage & Reflection Filter ═══
 		result, rule := e.layer1.Check(&pkt)
 		if result == FilterDrop {
@@ -372,6 +412,15 @@ func (e *Engine) worker(id int) {
 			e.metrics.DroppedPPS.Add(1)
 			e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
 			_ = rule
+			continue
+		}
+
+		// ═══ LAYER 2: Socket Discovery ═══
+		if (pkt.Protocol == packet.ProtoTCP || pkt.Protocol == packet.ProtoUDP) &&
+			!e.discovery.IsListening(pkt.DstPort, pkt.Protocol == packet.ProtoTCP) {
+			e.metrics.Layer2Drops.Add(1)
+			e.metrics.DroppedPPS.Add(1)
+			e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
 			continue
 		}
 
@@ -392,14 +441,27 @@ func (e *Engine) worker(id int) {
 			result := e.tcpShield.ProcessTCP(&pkt, buf[:n], &addr)
 			if result == FilterDrop {
 				e.metrics.Layer3Drops.Add(1)
+				if !pkt.IsSYN() {
+					e.metrics.OutOfStateDrops.Add(1)
+				}
 				e.metrics.DroppedPPS.Add(1)
 				e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
 				continue
 			}
 		} else if pkt.Protocol == packet.ProtoUDP {
-			result := e.udpShield.ProcessUDP(&pkt, buf[:n])
+			result, reason := e.udpShield.ProcessUDPWithReason(&pkt, buf[:n])
 			if result == FilterDrop {
 				e.metrics.Layer4Drops.Add(1)
+				switch reason {
+				case DropSubnetRate:
+					e.metrics.SubnetDrops.Add(1)
+				case DropGameQuery, DropDPI:
+					e.metrics.GameQueryDrops.Add(1)
+				case DropEntropy:
+					e.metrics.EntropyDrops.Add(1)
+				case DropUnverified:
+					e.metrics.UnverifiedDrops.Add(1)
+				}
 				e.metrics.DroppedPPS.Add(1)
 				e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
 				continue
@@ -410,7 +472,6 @@ func (e *Engine) worker(id int) {
 		e.inboundHandle.Send(buf[:n], &addr)
 	}
 }
-
 
 // outboundTracker monitors outbound UDP & TCP packets for two-way verification
 func (e *Engine) outboundTracker() {
@@ -445,7 +506,6 @@ func (e *Engine) outboundTracker() {
 			continue
 		}
 
-
 		// Record outbound traffic volume & two-way verification
 		e.metrics.OutboundPPS.Add(1)
 		e.metrics.OutboundBPS.Add(uint64(n))
@@ -457,8 +517,6 @@ func (e *Engine) outboundTracker() {
 		}
 	}
 }
-
-
 
 // sweeper periodically cleans up expired state entries and dead connections
 func (e *Engine) sweeper() {
@@ -496,6 +554,7 @@ func (e *Engine) stateEvaluator() {
 		select {
 		case <-ticker.C:
 			e.state.Evaluate()
+			e.metrics.Snapshot()
 
 			mode := int32(e.state.GetMode())
 			e.metrics.CurrentMode.Store(mode)
@@ -503,6 +562,9 @@ func (e *Engine) stateEvaluator() {
 			e.metrics.ActiveFlows.Store(uint64(e.udpShield.GetFlowCount()))
 			e.metrics.VerifiedTCP.Store(uint64(e.tcpShield.GetVerifiedCount()))
 			e.metrics.BlacklistedIPs.Store(uint64(e.udpShield.GetBlacklistedCount()))
+			e.metrics.UniqueSourceIPs.Store(e.state.GetUniqueIPs())
+			e.metrics.UniqueSubnets.Store(e.state.GetUniqueSubnets())
+			e.metrics.BotnetDetected.Store(e.state.IsBotnetDetected())
 
 			// Adapt AI defense baseline
 			if e.autoDefense != nil {
@@ -557,22 +619,22 @@ func (e *Engine) GetModeManager() *ModeManager {
 
 // GetGeoIPMode returns the current GeoIP mode.
 func (e *Engine) GetGeoIPMode() int {
-	return e.geoIPMode
+	return int(e.geoIPMode.Load())
 }
 
 // SetGeoIPMode sets the GeoIP mode.
 func (e *Engine) SetGeoIPMode(mode int) {
-	e.geoIPMode = mode
+	e.geoIPMode.Store(int32(mode))
 }
 
 // GetEntropyMode returns the current UDP Entropy mode.
 func (e *Engine) GetEntropyMode() int {
-	return e.entropyMode
+	return int(e.entropyMode.Load())
 }
 
 // SetEntropyMode sets the UDP Entropy mode and updates the shield state.
 func (e *Engine) SetEntropyMode(mode int) {
-	e.entropyMode = mode
+	e.entropyMode.Store(int32(mode))
 	shouldEntropy := false
 	if mode == EntropyModeOn {
 		shouldEntropy = true
@@ -581,5 +643,3 @@ func (e *Engine) SetEntropyMode(mode int) {
 	}
 	e.udpShield.SetEntropy(shouldEntropy)
 }
-
-

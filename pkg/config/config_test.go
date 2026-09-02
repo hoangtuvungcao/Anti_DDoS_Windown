@@ -12,11 +12,14 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Workers != 0 {
 		t.Errorf("Expected default workers 0 (auto-detect), got %d", cfg.Workers)
 	}
-	if cfg.PeaceMode.UDPPPSPerFlow != 80 {
-		t.Errorf("Expected UDP PPS flow limit 80, got %v", cfg.PeaceMode.UDPPPSPerFlow)
+	if cfg.PeaceMode.UDPPPSPerFlow != 120 {
+		t.Errorf("Expected UDP PPS flow limit 120, got %v", cfg.PeaceMode.UDPPPSPerFlow)
 	}
-	if cfg.WarMode.TriggerPPS != 5000 {
-		t.Errorf("Expected War trigger PPS 5000, got %d", cfg.WarMode.TriggerPPS)
+	if cfg.WarMode.TriggerPPS != 4000 {
+		t.Errorf("Expected War trigger PPS 4000, got %d", cfg.WarMode.TriggerPPS)
+	}
+	if cfg.WebDashboard.AllowLAN {
+		t.Error("production default must keep dashboard on localhost")
 	}
 }
 
@@ -38,7 +41,6 @@ func TestLoadAndSave(t *testing.T) {
 	if cfg.Workers != 0 {
 		t.Errorf("Expected default workers 0, got %d", cfg.Workers)
 	}
-
 
 	// Verify file was actually created
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
@@ -126,3 +128,15 @@ func TestLoad_WithVietnameseComments(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnauthenticatedLANDashboard(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.WebDashboard.AllowLAN = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected unsafe LAN dashboard configuration to be rejected")
+	}
+	cfg.WebDashboard.Username = "admin"
+	cfg.WebDashboard.Password = "a-unique-password-2026"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected authenticated LAN dashboard to validate: %v", err)
+	}
+}

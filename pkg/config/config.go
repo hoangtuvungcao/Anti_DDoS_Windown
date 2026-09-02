@@ -2,7 +2,10 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
+	"strings"
 	"time"
 
 	"waf-game/pkg/engine"
@@ -45,7 +48,6 @@ type NotificationsConfig struct {
 	CooldownSec       int    `json:"cooldown_sec"`
 }
 
-
 // PeaceModeConfig holds normal operation settings
 type PeaceModeConfig struct {
 	UDPPPSPerFlow             float64 `json:"udp_pps_per_flow"`
@@ -68,6 +70,7 @@ type WarModeConfig struct {
 	TriggerBPS      uint64  `json:"trigger_bps"`
 	CooldownSec     int64   `json:"cooldown_sec"`
 	UDPPPSPerFlow   float64 `json:"udp_pps_per_flow"`
+	UDPBPSPerFlow   float64 `json:"udp_bps_per_flow"`
 	UDPPerIPPPS     float64 `json:"udp_pps_per_ip"`
 	SubnetPPSLimit  float64 `json:"subnet_pps_limit"`
 	EnableDPI       bool    `json:"enable_dpi"`
@@ -103,7 +106,6 @@ type CustomRule struct {
 // GameRule alias for backward compatibility
 type GameRule = CustomRule
 
-
 // DefaultConfig returns a config with sensible defaults for high-protection
 func DefaultConfig() Config {
 	return Config{
@@ -121,6 +123,7 @@ func DefaultConfig() Config {
 			TCPMaxConnPerSubnet:       300,
 			TCPIdleTimeoutSec:         90,
 			EnableAmplificationFilter: true,
+			EnableDPIShield:           true,
 			EnableGameShield:          true,
 		},
 
@@ -129,6 +132,7 @@ func DefaultConfig() Config {
 			TriggerBPS:      31457280, // 30 MB/s
 			CooldownSec:     60,
 			UDPPPSPerFlow:   35,
+			UDPBPSPerFlow:   524288,
 			UDPPerIPPPS:     80,
 			SubnetPPSLimit:  200,
 			EnableDPI:       true,
@@ -156,7 +160,7 @@ func DefaultConfig() Config {
 			Port:     8080,
 			Username: "",
 			Password: "",
-			AllowLAN: true,
+			AllowLAN: false,
 		},
 		Notifications: NotificationsConfig{
 			Enabled:           false,
@@ -167,8 +171,6 @@ func DefaultConfig() Config {
 		},
 	}
 }
-
-
 
 // Load reads config from file with full support for JavaScript/C-style comments (// and /* */).
 // If file doesn't exist, creates it with defaults.
@@ -191,7 +193,6 @@ func Load(path string) (*Config, error) {
 	if err := json.Unmarshal(cleanData, &cfg); err != nil {
 		return nil, err
 	}
-
 
 	// Fill zero values with defaults
 	def := DefaultConfig()
@@ -219,6 +220,9 @@ func Load(path string) (*Config, error) {
 	if cfg.PeaceMode.TCPIdleTimeoutSec == 0 {
 		cfg.PeaceMode.TCPIdleTimeoutSec = def.PeaceMode.TCPIdleTimeoutSec
 	}
+	if cfg.PeaceMode.BlacklistDurSec == 0 {
+		cfg.PeaceMode.BlacklistDurSec = def.PeaceMode.BlacklistDurSec
+	}
 	if cfg.WarMode.TriggerPPS == 0 {
 		cfg.WarMode.TriggerPPS = def.WarMode.TriggerPPS
 	}
@@ -227,6 +231,12 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.WarMode.UDPPPSPerFlow == 0 {
 		cfg.WarMode.UDPPPSPerFlow = def.WarMode.UDPPPSPerFlow
+	}
+	if cfg.WarMode.UDPBPSPerFlow == 0 {
+		cfg.WarMode.UDPBPSPerFlow = def.WarMode.UDPBPSPerFlow
+	}
+	if cfg.WarMode.CooldownSec == 0 {
+		cfg.WarMode.CooldownSec = def.WarMode.CooldownSec
 	}
 	if cfg.WarMode.UDPPerIPPPS == 0 {
 		cfg.WarMode.UDPPerIPPPS = def.WarMode.UDPPerIPPPS
@@ -249,8 +259,49 @@ func Load(path string) (*Config, error) {
 	if cfg.SystemMode == "" {
 		cfg.SystemMode = "AUTO"
 	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
+}
+
+// Validate rejects dangerous or internally inconsistent production settings.
+func (c *Config) Validate() error {
+	mode := strings.ToUpper(c.SystemMode)
+	if mode != "AUTO" && mode != "WAR" && mode != "PEACE" && mode != "ON" && mode != "OFF" {
+		return fmt.Errorf("invalid system_mode %q", c.SystemMode)
+	}
+	if c.Workers < 0 || c.Workers > 256 {
+		return fmt.Errorf("workers must be between 0 and 256")
+	}
+	if c.PeaceMode.UDPPPSPerFlow <= 0 || c.PeaceMode.UDPBPSPerFlow <= 0 || c.PeaceMode.UDPPPSPerIP <= 0 || c.PeaceMode.SubnetPPSLimit <= 0 {
+		return fmt.Errorf("peace_mode UDP limits must be positive")
+	}
+	if c.WarMode.UDPPPSPerFlow <= 0 || c.WarMode.UDPBPSPerFlow <= 0 || c.WarMode.UDPPerIPPPS <= 0 || c.WarMode.SubnetPPSLimit <= 0 {
+		return fmt.Errorf("war_mode UDP limits must be positive")
+	}
+	if c.WarMode.UDPPPSPerFlow > c.PeaceMode.UDPPPSPerFlow || c.WarMode.UDPPerIPPPS > c.PeaceMode.UDPPPSPerIP || c.WarMode.SubnetPPSLimit > c.PeaceMode.SubnetPPSLimit {
+		return fmt.Errorf("war_mode rate limits must not be looser than peace_mode")
+	}
+	if c.WebDashboard.Enabled {
+		if c.WebDashboard.Port < 1 || c.WebDashboard.Port > 65535 {
+			return fmt.Errorf("web_dashboard.port must be between 1 and 65535")
+		}
+		if c.WebDashboard.AllowLAN && (c.WebDashboard.Username == "" || len(c.WebDashboard.Password) < 12) {
+			return fmt.Errorf("LAN dashboard requires username and a password of at least 12 characters")
+		}
+	}
+	for _, value := range append(append([]string{}, c.WhitelistIPs...), c.BlacklistIPs...) {
+		if ip := net.ParseIP(value); ip != nil && ip.To4() != nil {
+			continue
+		}
+		if ip, _, err := net.ParseCIDR(value); err == nil && ip.To4() != nil {
+			continue
+		}
+		return fmt.Errorf("invalid IPv4/CIDR rule %q", value)
+	}
+	return nil
 }
 
 // Save writes config to file with pretty formatting.
@@ -295,9 +346,6 @@ func (c *Config) ToEngineConfig() engine.EngineConfig {
 		}
 	}
 
-
-	enableDPI := c.PeaceMode.EnableDPIShield || c.PeaceMode.EnableGameShield
-
 	return engine.EngineConfig{
 		Workers:                   c.Workers,
 		DiscoveryInterval:         time.Duration(c.Discovery.IntervalSec) * time.Second,
@@ -312,14 +360,18 @@ func (c *Config) ToEngineConfig() engine.EngineConfig {
 		TCPMaxConnSubnet:          c.PeaceMode.TCPMaxConnPerSubnet,
 		TCPIdleTimeout:            c.PeaceMode.TCPIdleTimeoutSec,
 		EnableAmplificationFilter: c.PeaceMode.EnableAmplificationFilter,
-		EnableGameShield:          enableDPI,
+		EnableGameShield:          c.PeaceMode.EnableGameShield,
+		EnableDPIShield:           c.PeaceMode.EnableDPIShield,
 		WarTriggerPPS:             c.WarMode.TriggerPPS,
 		WarTriggerBPS:             c.WarMode.TriggerBPS,
 		WarCooldown:               c.WarMode.CooldownSec,
 		WarFlowPPS:                c.WarMode.UDPPPSPerFlow,
 		WarIPPPS:                  c.WarMode.UDPPerIPPPS,
 		WarSubnetPPS:              c.WarMode.SubnetPPSLimit,
+		WarFlowBPS:                c.WarMode.UDPBPSPerFlow,
+		WarEnableDPI:              c.WarMode.EnableDPI,
 		EntropyMode:               entropyMode,
+		TwoWayVerify:              c.WarMode.EnableTwoWay,
 		GeoIPMode:                 geoIPMode,
 		SystemMode:                c.SystemMode,
 		WhitelistIPs:              c.WhitelistIPs,
@@ -387,6 +439,3 @@ func stripJSONComments(data []byte) []byte {
 
 	return out
 }
-
-
-

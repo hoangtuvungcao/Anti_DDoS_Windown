@@ -10,7 +10,6 @@ import (
 	"waf-game/pkg/stats"
 )
 
-
 // AttackVector represents identified DDoS attack patterns.
 type AttackVector string
 
@@ -25,7 +24,6 @@ const (
 	VectorUdpEntropy       AttackVector = "UDP HIGH-ENTROPY FLOOD"
 	VectorFragmentFlood    AttackVector = "IP FRAGMENT FLOOD"
 )
-
 
 // OffenderRecord tracks repeat attack history for graduated auto-ban.
 type OffenderRecord struct {
@@ -57,7 +55,6 @@ type AutoDefense struct {
 	// Metrics reference
 	metrics *stats.Metrics
 
-
 	// Logger
 	logger interface {
 		Println(v ...interface{})
@@ -87,15 +84,13 @@ func (ad *AutoDefense) GetPortProfile(port uint16) string {
 	return "UNIVERSAL_PORT_SHIELD (Active 1-65535)"
 }
 
-
-
 // EvaluateBaselineAndUpdate adapts the baseline during Peace mode and classifies attacks during War mode.
 func (ad *AutoDefense) EvaluateBaselineAndUpdate(isWar bool) (recTriggerPPS, recTriggerBPS uint64) {
 	ad.mu.Lock()
 	defer ad.mu.Unlock()
 
-	snapPPS := float64(ad.metrics.SnapPPS)
-	snapBPS := float64(ad.metrics.SnapBPS)
+	snapPPS := float64(ad.metrics.SnapPPS.Load())
+	snapBPS := float64(ad.metrics.SnapBPS.Load())
 
 	// In Peace Mode, update Exponential Moving Average of normal traffic
 	if !isWar {
@@ -122,30 +117,32 @@ func (ad *AutoDefense) EvaluateBaselineAndUpdate(isWar bool) (recTriggerPPS, rec
 func (ad *AutoDefense) classifyAttackVector() {
 	var vectors []AttackVector
 
-	if ad.metrics.SnapL2 > 50 && ad.metrics.SnapSubnet > 20 {
-		vectors = append(vectors, VectorCarpetBombing)
-	}
-	if ad.metrics.SnapSubnet > 20 {
+	if ad.metrics.BotnetDetected.Load() {
 		vectors = append(vectors, VectorSubnetBotnet)
 	}
-	if ad.metrics.SnapReflection > 20 {
+	if ad.metrics.SnapL2.Load() > 50 && ad.metrics.SnapSubnet.Load() > 20 {
+		vectors = append(vectors, VectorCarpetBombing)
+	}
+	if ad.metrics.SnapSubnet.Load() > 20 && !ad.metrics.BotnetDetected.Load() {
+		vectors = append(vectors, VectorSubnetBotnet)
+	}
+	if ad.metrics.SnapReflection.Load() > 20 {
 		vectors = append(vectors, VectorUdpAmplification)
 	}
-	if ad.metrics.SnapGameQuery > 10 {
+	if ad.metrics.SnapGameQuery.Load() > 10 {
 		vectors = append(vectors, VectorGameQueryFlood)
 	}
-	if ad.metrics.SnapOutOfState > 20 {
+	if ad.metrics.SnapOutOfState.Load() > 20 {
 		vectors = append(vectors, VectorTcpOutOfState)
 	}
-	if ad.metrics.SnapL3 > 50 && ad.metrics.SnapOutOfState <= 20 {
+	if ad.metrics.SnapL3.Load() > 50 && ad.metrics.SnapOutOfState.Load() <= 20 {
 		vectors = append(vectors, VectorSynFlood)
 	}
-	if ad.metrics.SnapL1 > 50 {
+	if ad.metrics.SnapL1.Load() > 50 {
 		vectors = append(vectors, VectorFragmentFlood)
 	}
 
 	ad.activeVectors = vectors
-
 
 	if len(vectors) > 0 {
 		ad.primaryVector = vectors[0]

@@ -13,6 +13,22 @@ const (
 	FilterDrop
 )
 
+// DropReason preserves the mitigation decision for metrics and attack diagnosis.
+type DropReason uint8
+
+const (
+	DropNone DropReason = iota
+	DropBlacklisted
+	DropUnverified
+	DropGameQuery
+	DropDPI
+	DropEntropy
+	DropFlowRate
+	DropIPRate
+	DropSubnetRate
+	DropOutOfState
+)
+
 // Known UDP reflection / amplification source ports commonly abused in DDoS attacks
 var knownReflectionPorts = map[uint16]string{
 	17:    "QOTD",
@@ -110,7 +126,6 @@ func (f *Layer1Filter) Check(pkt *packet.Packet) (FilterResult, int) {
 	return f.checkIPSource(pkt)
 }
 
-
 func (f *Layer1Filter) checkTCP(pkt *packet.Packet) (FilterResult, int) {
 	flags := pkt.TCPFlags
 
@@ -173,4 +188,3 @@ func (f *Layer1Filter) checkIPSource(pkt *packet.Packet) (FilterResult, int) {
 
 	return FilterPass, 0
 }
-

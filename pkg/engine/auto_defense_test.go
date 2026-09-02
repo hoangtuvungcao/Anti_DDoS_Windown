@@ -12,8 +12,8 @@ func TestAutoDefense_AttackClassificationAndBaseline(t *testing.T) {
 	ad := NewAutoDefense(metrics, nil)
 
 	// In Peace mode, simulate normal 200 PPS baseline
-	metrics.SnapPPS = 200
-	metrics.SnapBPS = 200 * 500
+	metrics.SnapPPS.Store(200)
+	metrics.SnapBPS.Store(200 * 500)
 	recPPS, recBPS := ad.EvaluateBaselineAndUpdate(false)
 
 	if recPPS < 2500 {
@@ -24,7 +24,7 @@ func TestAutoDefense_AttackClassificationAndBaseline(t *testing.T) {
 	}
 
 	// In War mode, simulate Subnet DDoS
-	metrics.SnapSubnet = 500
+	metrics.SnapSubnet.Store(500)
 	ad.EvaluateBaselineAndUpdate(true)
 
 	if ad.GetPrimaryAttackVector() != VectorSubnetBotnet {
@@ -32,8 +32,8 @@ func TestAutoDefense_AttackClassificationAndBaseline(t *testing.T) {
 	}
 
 	// Simulate Game Query DDoS
-	metrics.SnapSubnet = 0
-	metrics.SnapGameQuery = 300
+	metrics.SnapSubnet.Store(0)
+	metrics.SnapGameQuery.Store(300)
 	ad.EvaluateBaselineAndUpdate(true)
 
 	if ad.GetPrimaryAttackVector() != VectorGameQueryFlood {
@@ -93,8 +93,8 @@ func TestAutoDefense_CarpetBombing(t *testing.T) {
 	ad := NewAutoDefense(metrics, nil)
 
 	// Simulate Carpet Bombing (heavy closed port scan across multiple subnets)
-	metrics.SnapL2 = 120
-	metrics.SnapSubnet = 60
+	metrics.SnapL2.Store(120)
+	metrics.SnapSubnet.Store(60)
 
 	ad.classifyAttackVector()
 	primary := ad.GetPrimaryAttackVector()
@@ -102,6 +102,3 @@ func TestAutoDefense_CarpetBombing(t *testing.T) {
 		t.Errorf("Expected primary vector %s, got %s", VectorCarpetBombing, primary)
 	}
 }
-
-
-

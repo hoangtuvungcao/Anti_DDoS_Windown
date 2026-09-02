@@ -298,11 +298,12 @@ function updateGeneratedConfig() {
             "trigger_pps": 4000,
             "trigger_bps": 31457280,
             "udp_pps_per_flow": 35,
+            "udp_bps_per_flow": 524288,
             "udp_pps_per_ip": 80,
             "subnet_pps_limit": 200,
             "geoip_mode": geoMode
         },
-        "web": {
+        "web_dashboard": {
             "enabled": true,
             "port": webPort,
             "username": "admin",

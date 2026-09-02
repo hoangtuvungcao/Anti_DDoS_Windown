@@ -3,6 +3,8 @@ package engine
 import (
 	"testing"
 	"time"
+
+	"waf-game/pkg/packet"
 )
 
 func TestStateManager_Transitions(t *testing.T) {
@@ -50,6 +52,27 @@ func TestStateManager_Transitions(t *testing.T) {
 	sm.Evaluate()
 	if sm.GetMode() != ModePeace || peaceCalled != 1 {
 		t.Errorf("Should transition back to Peace. Mode: %v, peaceCalled: %d", sm.GetMode(), peaceCalled)
+	}
+}
+
+func TestStateManagerDetectsDistributedBotnetBelowGlobalThreshold(t *testing.T) {
+	sm := NewStateManager(4000, 30*1024*1024, 1)
+	warCalled := 0
+	sm.SetCallbacks(func() { warCalled++ }, func() {})
+
+	// 1,000 UDP bots across 250 /24s: each bot sends only one packet, so
+	// per-IP and per-/24 limiters alone cannot identify the campaign.
+	for i := 0; i < 1000; i++ {
+		ip := uint32(10)<<24 | uint32(i%250)<<16 | uint32(i/250)<<8 | uint32(i%253+1)
+		sm.RecordPacketDetails(96, ip, packet.ProtoUDP, false)
+	}
+	sm.Evaluate()
+
+	if !sm.IsBotnetDetected() || sm.GetMode() != ModeWar || warCalled != 1 {
+		t.Fatalf("distributed botnet not escalated: detected=%v mode=%v unique_ip=%d subnet=%d", sm.IsBotnetDetected(), sm.GetMode(), sm.GetUniqueIPs(), sm.GetUniqueSubnets())
+	}
+	if sm.GetUniqueIPs() < 900 || sm.GetUniqueSubnets() < 200 {
+		t.Fatalf("cardinality sketch unexpectedly inaccurate: ip=%d subnet=%d", sm.GetUniqueIPs(), sm.GetUniqueSubnets())
 	}
 }
 

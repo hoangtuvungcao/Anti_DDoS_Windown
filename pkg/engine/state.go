@@ -1,8 +1,16 @@
 package engine
 
 import (
+	"math/bits"
 	"sync/atomic"
 	"time"
+
+	"waf-game/pkg/packet"
+)
+
+const (
+	ipSketchWords     = 1024 // 65,536-bit lock-free cardinality sketch
+	subnetSketchWords = 256  // 16,384-bit sketch
 )
 
 // SystemMode represents the current protection mode
@@ -31,7 +39,15 @@ type StateManager struct {
 	// Traffic tracking (1-second window)
 	currentPPS atomic.Uint64
 	currentBPS atomic.Uint64
-	lastReset  int64
+	lastPPS    atomic.Uint64
+	lastBPS    atomic.Uint64
+	udpPackets atomic.Uint64
+	synPackets atomic.Uint64
+	ipSketch   [ipSketchWords]atomic.Uint64
+	subSketch  [subnetSketchWords]atomic.Uint64
+	uniqueIPs  atomic.Uint64
+	uniqueNets atomic.Uint64
+	botnet     atomic.Bool
 
 	// Callbacks for mode transitions
 	onWarMode   func()
@@ -54,7 +70,6 @@ func NewStateManager(triggerPPS, triggerBPS uint64, cooldownSec int64) *StateMan
 		triggerPPS:  triggerPPS,
 		triggerBPS:  triggerBPS,
 		cooldownSec: cooldownSec,
-		lastReset:   time.Now().Unix(),
 	}
 }
 
@@ -70,10 +85,55 @@ func (sm *StateManager) RecordPacket(size uint16) {
 	sm.currentBPS.Add(uint64(size))
 }
 
+// RecordPacketDetails records traffic before filtering and feeds the distributed
+// botnet detector. Fixed-size atomic sketches avoid a global lock on the hot path.
+func (sm *StateManager) RecordPacketDetails(size uint16, srcIP uint32, protocol uint8, syn bool) {
+	sm.RecordPacket(size)
+	if protocol == packet.ProtoUDP {
+		sm.udpPackets.Add(1)
+	}
+	if protocol == packet.ProtoTCP && syn {
+		sm.synPackets.Add(1)
+	}
+	ipHash := mix32(srcIP) % uint32(ipSketchWords*64)
+	sm.ipSketch[ipHash>>6].Or(uint64(1) << (ipHash & 63))
+	subHash := mix32(srcIP>>8) % uint32(subnetSketchWords*64)
+	sm.subSketch[subHash>>6].Or(uint64(1) << (subHash & 63))
+}
+
+func mix32(v uint32) uint32 {
+	v ^= v >> 16
+	v *= 0x7feb352d
+	v ^= v >> 15
+	v *= 0x846ca68b
+	return v ^ (v >> 16)
+}
+
 // Evaluate checks current traffic levels and switches mode if needed.
 func (sm *StateManager) Evaluate() {
 	pps := sm.currentPPS.Swap(0)
 	bps := sm.currentBPS.Swap(0)
+	udp := sm.udpPackets.Swap(0)
+	syn := sm.synPackets.Swap(0)
+	sm.lastPPS.Store(pps)
+	sm.lastBPS.Store(bps)
+
+	var ipBits, subnetBits uint64
+	for i := range sm.ipSketch {
+		ipBits += uint64(bits.OnesCount64(sm.ipSketch[i].Swap(0)))
+	}
+	for i := range sm.subSketch {
+		subnetBits += uint64(bits.OnesCount64(sm.subSketch[i].Swap(0)))
+	}
+	sm.uniqueIPs.Store(ipBits)
+	sm.uniqueNets.Store(subnetBits)
+	protocolFlood := udp*10 >= pps*6 || syn*10 >= pps*4
+	botnetFloor := sm.triggerPPS / 4
+	if botnetFloor < 500 {
+		botnetFloor = 500
+	}
+	distributedBotnet := pps >= botnetFloor && ipBits >= 64 && subnetBits >= 16 && protocolFlood
+	sm.botnet.Store(distributedBotnet)
 
 	if sm.isManual.Load() {
 		return
@@ -93,7 +153,7 @@ func (sm *StateManager) Evaluate() {
 			}
 		}
 
-	case pps >= sm.triggerPPS || bps >= sm.triggerBPS:
+	case pps >= sm.triggerPPS || bps >= sm.triggerBPS || distributedBotnet:
 		// War level
 		if currentMode != ModeWar && currentMode != ModeUnderSiege {
 			sm.mode.Store(int32(ModeWar))
@@ -168,11 +228,14 @@ func (sm *StateManager) IsWarMode() bool {
 
 // GetCurrentPPS returns the PPS from the last evaluation window.
 func (sm *StateManager) GetCurrentPPS() uint64 {
-	return sm.currentPPS.Load()
+	return sm.lastPPS.Load()
 }
 
 // GetCurrentBPS returns the BPS from the last evaluation window.
 func (sm *StateManager) GetCurrentBPS() uint64 {
-	return sm.currentBPS.Load()
+	return sm.lastBPS.Load()
 }
 
+func (sm *StateManager) IsBotnetDetected() bool   { return sm.botnet.Load() }
+func (sm *StateManager) GetUniqueIPs() uint64     { return sm.uniqueIPs.Load() }
+func (sm *StateManager) GetUniqueSubnets() uint64 { return sm.uniqueNets.Load() }

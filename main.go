@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 import (
@@ -22,7 +24,7 @@ import (
 )
 
 const (
-	version    = "1.0.0"
+	version    = "3.1.0"
 	configFile = "config.json"
 )
 
@@ -107,6 +109,7 @@ func main() {
 				}
 				return
 			}
+			wireNotifier(eng, botNotifier)
 			eng.Start()
 
 			webServer = web.NewServer(web.WebConfig{
@@ -116,7 +119,9 @@ func main() {
 				Password: cfg.WebDashboard.Password,
 				AllowLAN: cfg.WebDashboard.AllowLAN,
 			}, eng, metrics, fastLog)
-			_ = webServer.Start()
+			if err := webServer.Start(); err != nil && fastLog != nil {
+				fastLog.Error("WEB", "Dashboard disabled: %v", err)
+			}
 
 			wd = watchdog.NewWatchdog(fastLog)
 			wd.Start()
@@ -150,7 +155,6 @@ func main() {
 
 	if !isAdmin() {
 		fmt.Println("[ERROR] WAF-Shield requires Administrator privileges.")
-		fmt.Println("Right-click → Run as Administrator")
 		os.Exit(1)
 	}
 
@@ -198,6 +202,7 @@ func main() {
 		}
 		os.Exit(1)
 	}
+	wireNotifier(eng, botNotifier)
 
 	fmt.Println("[OK] WinDivert driver loaded")
 	fmt.Printf("[OK] Engine started with %d workers\n", cfg.Workers)
@@ -215,8 +220,11 @@ func main() {
 		Password: cfg.WebDashboard.Password,
 		AllowLAN: cfg.WebDashboard.AllowLAN,
 	}, eng, metrics, fastLog)
-	_ = webServer.Start()
-	if cfg.WebDashboard.Enabled {
+	webStarted := webServer.Start() == nil
+	if !webStarted {
+		fmt.Println("[WARN] Web Dashboard could not be started; check credentials, bind address and port.")
+	}
+	if cfg.WebDashboard.Enabled && webStarted {
 		fmt.Printf("[OK] Web Dashboard active at: http://127.0.0.1:%d\n", cfg.WebDashboard.Port)
 	}
 
@@ -253,6 +261,23 @@ func main() {
 	fmt.Println("[OK] WinDivert driver unloaded — network stack restored")
 	engine.GetWindowsHardening().Restore()
 	fmt.Println("[OK] WAF-Shield stopped safely. Network is fully operational.")
+}
+
+func wireNotifier(eng *engine.Engine, n *notifier.Notifier) {
+	if eng == nil || n == nil {
+		return
+	}
+	eng.SetAttackCallback(func(active bool, vector string, pps, bps, drops uint64) {
+		alertType := notifier.AlertAttackMitigated
+		title := "DDoS incident mitigated"
+		description := "Traffic returned below the configured thresholds."
+		if active {
+			alertType = notifier.AlertAttackStart
+			title = "DDoS attack detected"
+			description = "WAF-Shield escalated to War Mode and applied strict mitigation limits."
+		}
+		n.Send(notifier.AlertPayload{Type: alertType, Title: title, Description: description, Vector: vector, PeakPPS: pps, PeakBPS: bps, TotalDrops: drops})
+	})
 }
 
 func printBanner() {

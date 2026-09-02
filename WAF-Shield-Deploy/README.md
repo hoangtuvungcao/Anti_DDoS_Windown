@@ -1,15 +1,15 @@
-# 🛡️ WAF-Shield Enterprise v3.0 — Tường Lửa Anti-DDoS Đa Năng Cho Windows
+# WAF-Shield Enterprise v3.1 — Packet Firewall Anti-DDoS cho Windows
 
 **WAF-Shield Enterprise** là giải pháp tường lửa và trung tâm điều hành bảo mật (SOC) chuyên dụng chống tấn công từ chối dịch vụ (**Anti-DDoS**) hoạt động trực tiếp trên nhân mạng Windows (Windows Server 2012, 2012 R2, 2016, 2019, 2022, 2025 và Windows 10, Windows 11).
 
-Hệ thống hoạt động ở cấp độ driver mạng NDIS (thông qua WinDivert), bảo vệ **hoàn toàn trong suốt 100% (Zero-Invasive)** cho mọi ứng dụng máy chủ (**Mọi thể loại Game Server UDP/TCP, Web Server HTTP/HTTPS/WebSocket, Voice Server, RDP Remote Desktop 3389, SSH, Database**) trên toàn bộ dải cổng từ **1 đến 65535**.
+Hệ thống chặn gói IPv4 qua WinDivert trước khi lưu lượng tới socket ứng dụng. Đây là lớp giảm thiểu tại host; không thể thay thế scrubbing upstream nếu đường truyền đã bị bão hòa.
 
 🌐 **Trang Chủ Triển Lãm & Hướng Dẫn Online (GitHub Pages)**: `trangchu/index.html`
 
 
 ---
 
-## TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.0 ENTERPRISE
+## TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.1
 
 1. ** Giám Sát Lưu Lượng Mạng 2 Chiều Toàn Diện (Bidirectional RX & TX Telemetry)**:
    - Theo dõi song song **Lưu lượng đi vào (Inbound RX)** và **Lưu lượng phản hồi đi ra (Outbound TX)**.
@@ -19,10 +19,10 @@ Hệ thống hoạt động ở cấp độ driver mạng NDIS (thông qua WinDi
 2. **🎛️ 4 Chế Độ Phòng Thủ 1 Chạm (Instant Defense Presets)**:
    - ** Full-Stack Hybrid Shield**: Chế độ tối ưu hoàn hảo cho máy chủ chạy **cả Game Server (UDP) và Website / REST API (TCP)** cùng lúc.
    - ** Universal Game Server Shield**: Tối ưu chuyên sâu cho Game Server thời gian thực (**UDP Realtime**), bật bộ lọc Query Spam DPI và điều phối 120 PPS/luồng.
-   - ** High-Concurrency Web & API Shield**: Tối ưu cho Web Server, REST API và WebSocket (HTTP/1.1, HTTP/2, HTTPS). Bảo vệ chống cạn kiệt kết nối bằng Stateless SYN Proxy.
+   - **High-Concurrency Web & API Shield**: Theo dõi trạng thái SYN/ACK, giới hạn theo IP/subnet và dọn kết nối treo cho Web Server, REST API và WebSocket.
    - ** Maximum Lockdown Defense**: Khóa chặt máy chủ 24/7 chỉ cho phép IP Việt Nam và bật toàn bộ lớp bảo vệ nghiêm ngặt.
 
-3. **🌍 Bộ Lọc Vị Trí Địa Lý Geo-IP Việt Nam (Binary Tree Siêu Tốc 0.01 microsecond)**:
+3. **🌍 Bộ Lọc Vị Trí Địa Lý Geo-IP Việt Nam**:
    - Tích hợp sẵn cơ sở dữ liệu `vn.zone` chứa hàng chục nghìn dải IP Việt Nam (Viettel, VNPT, FPT, CMC...).
    - Chế độ **ONLY VN**: Khóa 100% toàn bộ dải IP quốc tế chỉ với 1 click.
    - Chế độ **AUTO**: Tự động cho phép IP quốc tế khi thời bình (Peace Mode) và tự động khóa IP quốc tế khi bị bão tấn công (War Mode).
@@ -64,7 +64,7 @@ Hệ thống hoạt động ở cấp độ driver mạng NDIS (thông qua WinDi
                                 └─────────┬─────────┘
                                           ▼
                ┌────────────────────────────────────────────────────────┐
-               │      MÁY CHỦ ỨNG DỤNG / GAME SERVER (ĐỘ TRỄ 0ms)       │
+               │             MÁY CHỦ ỨNG DỤNG / GAME SERVER              │
                └────────────────────────────────────────────────────────┘
 ```
 
@@ -125,12 +125,12 @@ Mọi thông số đều có thể điều chỉnh linh hoạt trong file `confi
     "subnet_pps_limit": 200,
     "geoip_mode": "AUTO"
   },
-  "web": {
+  "web_dashboard": {
     "enabled": true,
     "port": 8080,
     "username": "admin",
     "password": "change_me_here",
-    "allow_lan": true
+    "allow_lan": false
   }
 }
 ```
@@ -140,7 +140,9 @@ Mọi thông số đều có thể điều chỉnh linh hoạt trong file `confi
 ## 📦 THÀNH PHẦN FILE GÓI TRIỂN KHAI
 
 * **`waf-game.exe`**: File thực thi chính của WAF (Tích hợp sẵn Web Server SOC, NDIS Engine, Tường lửa Anti-DDoS).
-* **`WinDivert.dll` & `WinDivert64.sys`**: Driver mạng độ trễ 0ms của Windows.
+* **`WinDivert.dll` & `WinDivert64.sys`**: Thành phần bắt và tái chèn gói trên Windows.
+
+> Production: giữ dashboard ở localhost. Nếu bật `allow_lan`, phải đặt cả `username` và mật khẩu mạnh; WAF sẽ từ chối mở dashboard LAN khi thiếu xác thực.
 * **`config.json`**: File cấu hình thông số phòng thủ WAF.
 * **`resources/geo/vn.zone`**: Cơ sở dữ liệu IP Việt Nam.
 * **Các file `.bat` điều khiển**: `CHAY_WAF.bat`, `CAI_DAT_SERVICE.bat`, `BAT_SERVICE.bat`, `TAT_SERVICE.bat`, `GO_BO_SERVICE.bat`.

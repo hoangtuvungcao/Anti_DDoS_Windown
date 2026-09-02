@@ -65,13 +65,18 @@ func NewGameShield(customRules []CustomGameRule) *GameShield {
 
 // SetEnabled enables or disables the game shield.
 func (gs *GameShield) SetEnabled(enabled bool) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
 	gs.enabled = enabled
 }
 
 // CheckGamePacket inspects UDP payload for game query floods or protocol violations.
 // Returns FilterDrop if it is a query flood or violates rule, FilterPass otherwise.
 func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) FilterResult {
-	if !gs.enabled || len(payload) == 0 {
+	gs.mu.RLock()
+	enabled := gs.enabled
+	gs.mu.RUnlock()
+	if !enabled || len(payload) == 0 {
 		return FilterPass
 	}
 
@@ -180,9 +185,7 @@ func isRepeatedBytePattern(payload []byte) bool {
 	return true
 }
 
-
 // Sweep removes expired query rate limiting buckets.
 func (gs *GameShield) Sweep(ttl time.Duration) int64 {
 	return gs.queryBuckets.Sweep(ttl)
 }
-

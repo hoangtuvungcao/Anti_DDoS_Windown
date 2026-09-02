@@ -1,3 +1,5 @@
+//go:build windows
+
 package engine
 
 import (
@@ -78,6 +80,9 @@ func (pd *PortDiscovery) GetPorts() *PortSet {
 
 // IsListening checks if a port is being listened on for the given protocol.
 func (pd *PortDiscovery) IsListening(port uint16, isTCP bool) bool {
+	if pd.IsExcluded(port) {
+		return true
+	}
 	ports := pd.current.Load()
 	if ports == nil {
 		return true // Fail-open if no scan yet
@@ -86,6 +91,11 @@ func (pd *PortDiscovery) IsListening(port uint16, isTCP bool) bool {
 		return ports.TCP[port]
 	}
 	return ports.UDP[port]
+}
+
+// IsExcluded reports whether a port bypasses closed-port filtering.
+func (pd *PortDiscovery) IsExcluded(port uint16) bool {
+	return pd.exclude[port]
 }
 
 // Start begins periodic scanning in a goroutine.

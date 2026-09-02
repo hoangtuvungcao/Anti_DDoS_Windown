@@ -72,7 +72,7 @@ func (sm *ShardedMap[V]) GetOrCreate(key uint64, initFn func() V) (*Entry[V], bo
 	entry, ok := s.items[key]
 	s.mu.RUnlock()
 	if ok {
-		entry.LastSeen = time.Now().UnixNano()
+		atomic.StoreInt64(&entry.LastSeen, time.Now().UnixNano())
 		return entry, false
 	}
 
@@ -82,7 +82,7 @@ func (sm *ShardedMap[V]) GetOrCreate(key uint64, initFn func() V) (*Entry[V], bo
 	entry, ok = s.items[key]
 	if ok {
 		s.mu.Unlock()
-		entry.LastSeen = time.Now().UnixNano()
+		atomic.StoreInt64(&entry.LastSeen, time.Now().UnixNano())
 		return entry, false
 	}
 

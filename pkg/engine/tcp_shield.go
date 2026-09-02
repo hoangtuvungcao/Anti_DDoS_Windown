@@ -107,13 +107,12 @@ func NewTCPShield(handle *windivert.Handle, maxConnPerIP, connRatePerIP, maxConn
 		enabled:           true,
 		strict:            false,
 		secret:            randSecret,
-		cookieKey:        key,
+		cookieKey:         key,
 		blacklistDur:      5 * time.Minute,
 		handle:            handle,
 		startTime:         time.Now(),
 	}
 }
-
 
 // TrackOutbound registers an outbound TCP connection from the server.
 func (ts *TCPShield) TrackOutbound(dstIP [4]byte, dstPort, srcPort uint16) {
@@ -131,12 +130,19 @@ func (ts *TCPShield) TrackOutbound(dstIP [4]byte, dstPort, srcPort uint16) {
 
 // SetStrict enables or disables strict stateful filtering (War Mode).
 func (ts *TCPShield) SetStrict(val bool) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 	ts.strict = val
 }
 
 // ProcessTCP handles a TCP packet through connection tracking and rate limiting.
 func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windivert.Address) FilterResult {
-	if !ts.enabled {
+	ts.mu.RLock()
+	enabled, strict := ts.enabled, ts.strict
+	maxConnPerIP, maxConnPerSubnet := ts.maxConnPerIP, ts.maxConnPerSubnet
+	connRateLimitIP := ts.connRateLimitIP
+	ts.mu.RUnlock()
+	if !enabled {
 		return FilterPass
 	}
 
@@ -161,8 +167,6 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 	if (pkt.IsSYN() && pkt.IsFIN()) || (pkt.IsSYN() && pkt.IsRST()) {
 		return FilterDrop
 	}
-
-
 
 	// 2. Handle RST/FIN packets (Teardown)
 	if pkt.IsRST() || pkt.IsFIN() {
@@ -194,35 +198,37 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 			return datastore.NewIPBucket(15)
 		})
 		if !synEntry.Value.Allow() {
+			synEntry.Value.Blacklist(ts.blacklistDur)
 			return FilterDrop
 		}
-
 
 		// B. Check SYN rate limiter per Subnet /24 (150 SYNs per second per /24)
 		subnetSynEntry, _ := ts.synSubnetBuckets.GetOrCreate(subnetKey, func() *datastore.SubnetBucket {
 			return datastore.NewSubnetBucket(150)
 		})
 		if !subnetSynEntry.Value.Allow() {
+			subnetSynEntry.Value.Blacklist(ts.blacklistDur)
 			return FilterDrop
 		}
 
 		// C. Check New Connection Rate per IP
 		rateEntry, _ := ts.connRatePerIP.GetOrCreate(ipKey, func() *datastore.IPBucket {
-			return datastore.NewIPBucket(float64(ts.connRateLimitIP * 2))
+			return datastore.NewIPBucket(float64(connRateLimitIP * 2))
 		})
 		if !rateEntry.Value.Allow() {
+			rateEntry.Value.Blacklist(ts.blacklistDur)
 			return FilterDrop
 		}
 
 		// D. Check Max Concurrent Connections per IP
 		connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() int32 { return 0 })
-		if connEntry.Value >= ts.maxConnPerIP {
+		if connEntry.Value >= maxConnPerIP {
 			return FilterDrop
 		}
 
 		// E. Check Max Concurrent Connections per Subnet /24
 		subnetConnEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() int32 { return 0 })
-		if subnetConnEntry.Value >= ts.maxConnPerSubnet {
+		if subnetConnEntry.Value >= maxConnPerSubnet {
 			return FilterDrop
 		}
 
@@ -260,26 +266,6 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 
 	// 5. Out-of-State Packet Handling (Unverified Connection Scrubber)
 
-	// If unverified IP sends unexpected data packets, enforce token bucket (max 30 PPS) to neutralize ACK+Data floods
-	if pkt.PayloadLen > 0 {
-		outDataBucket, _ := ts.outOfStateBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-			return datastore.NewIPBucket(30)
-		})
-		if !outDataBucket.Value.Allow() {
-			return FilterDrop
-		}
-
-		ts.verified.Set(connKey, TCPConnState{
-			VerifiedAt:       now,
-			HandshakeAt:      now,
-			LastActivity:     now,
-			BytesTransferred: uint64(pkt.PayloadLen),
-			HasPayload:       true,
-			IsHalfOpen:       false,
-		})
-		return FilterPass
-	}
-
 	// Check if this ACK contains a valid Cryptographic SYN Cookie response (RFC 4987)
 	if pkt.IsACK() && pkt.AckNum > 0 {
 		cookieCandidate := pkt.AckNum - 1
@@ -300,10 +286,34 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		}
 	}
 
+	// Unverified ACK+data is only adopted in peace mode for connections that
+	// pre-date engine startup. Strict mode fails closed against ACK/data botnets.
+	if pkt.PayloadLen > 0 {
+		outDataBucket, _ := ts.outOfStateBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+			return datastore.NewIPBucket(30)
+		})
+		if !outDataBucket.Value.Allow() || strict {
+			if outDataBucket.Value.ViolationCount() >= 8 {
+				outDataBucket.Value.Blacklist(ts.blacklistDur)
+			}
+			return FilterDrop
+		}
+
+		ts.verified.Set(connKey, TCPConnState{
+			VerifiedAt:       now,
+			HandshakeAt:      now,
+			LastActivity:     now,
+			BytesTransferred: uint64(pkt.PayloadLen),
+			HasPayload:       true,
+			IsHalfOpen:       false,
+		})
+		return FilterPass
+	}
+
 	// Rate limit pure zero-payload ACK flood
 	outBucket, _ := ts.outOfStateBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
 		limit := float64(50)
-		if ts.strict {
+		if strict {
 			limit = 10
 		}
 		return datastore.NewIPBucket(limit)
@@ -313,7 +323,7 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		return FilterDrop
 	}
 
-	if ts.strict {
+	if strict {
 		return FilterDrop
 	}
 
@@ -322,7 +332,10 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 
 // ReapIdleConnections removes idle connections (> idleTimeoutSec) and decrements counters.
 func (ts *TCPShield) ReapIdleConnections() int64 {
-	idleCutoff := time.Duration(ts.idleTimeoutSec) * time.Second
+	ts.mu.RLock()
+	idleTimeoutSec := ts.idleTimeoutSec
+	ts.mu.RUnlock()
+	idleCutoff := time.Duration(idleTimeoutSec) * time.Second
 	return ts.verified.SweepWithCallback(idleCutoff, func(key uint64, state TCPConnState) {
 		dstPort := uint16((key >> 16) & 0xFFFF)
 		if IsManagementPort(dstPort) {
@@ -379,7 +392,6 @@ func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 	return int64(len(toDelete))
 }
 
-
 // ReapSlowlorisConnections forcibly terminates connections that hold open sockets but send no/low data.
 func (ts *TCPShield) ReapSlowlorisConnections() int64 {
 	now := time.Now().UnixNano()
@@ -414,7 +426,6 @@ func (ts *TCPShield) ReapSlowlorisConnections() int64 {
 
 	return int64(len(toDelete))
 }
-
 
 // GenerateSYNCookie generates a stateless cryptographic 32-bit initial sequence number (RFC 4987)
 func (ts *TCPShield) GenerateSYNCookie(srcIP [4]byte, dstIP [4]byte, srcPort, dstPort uint16) uint32 {
@@ -497,21 +508,28 @@ func (ts *TCPShield) GetBlacklist() []string {
 
 // GetMaxConn returns the current max connections per IP limit.
 func (ts *TCPShield) GetMaxConn() int32 {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 	return ts.maxConnPerIP
 }
 
 // SetMaxConn updates the max connections per IP limit.
 func (ts *TCPShield) SetMaxConn(val int32) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 	ts.maxConnPerIP = val
 }
 
 // GetIdleTimeout returns the idle timeout in seconds.
 func (ts *TCPShield) GetIdleTimeout() int64 {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 	return ts.idleTimeoutSec
 }
 
 // SetIdleTimeout updates the idle timeout in seconds.
 func (ts *TCPShield) SetIdleTimeout(val int64) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 	ts.idleTimeoutSec = val
 }
-

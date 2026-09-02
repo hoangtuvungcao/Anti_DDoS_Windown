@@ -63,6 +63,16 @@ body {
     min-height: 100vh;
 }
 
+.visual-explainer { padding: 40px 0 84px; }
+.visual-explainer img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-top: 28px;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
+}
+
 /* Background Cyber Canvas */
 #cyberCanvas {
     position: fixed;

@@ -1,3 +1,5 @@
+//go:build windows
+
 package engine
 
 import (
@@ -113,4 +115,3 @@ func (wh *WindowsHardening) Restore() {
 	wh.applied = false
 	fmt.Println("\033[32m[Windows Hardening] Restored original TCP/IP kernel settings.\033[0m")
 }
-

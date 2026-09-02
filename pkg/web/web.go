@@ -1,6 +1,9 @@
 package web
 
 import (
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	_ "embed"
 
 	"encoding/json"
@@ -55,7 +58,7 @@ func NewServer(cfg WebConfig, eng *engine.Engine, metrics *stats.Metrics, fastLo
 		metrics:      metrics,
 		fastLog:      fastLog,
 		startTime:    time.Now(),
-		activePreset: "GAME",
+		activePreset: "HYBRID",
 	}
 }
 
@@ -63,6 +66,12 @@ func NewServer(cfg WebConfig, eng *engine.Engine, metrics *stats.Metrics, fastLo
 func (s *Server) Start() error {
 	if !s.cfg.Enabled {
 		return nil
+	}
+	if s.cfg.AllowLAN && (s.cfg.Username == "" || s.cfg.Password == "") {
+		return fmt.Errorf("refusing unauthenticated LAN dashboard; set username/password or allow_lan=false")
+	}
+	if (s.cfg.Username == "") != (s.cfg.Password == "") {
+		return fmt.Errorf("dashboard username and password must both be set")
 	}
 
 	mux := http.NewServeMux()
@@ -89,23 +98,29 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/mode", s.authMiddleware(s.handleAPIMode))
 	mux.HandleFunc("/api/geoip", s.authMiddleware(s.handleAPIGeoIP))
 
-
 	bindAddr := fmt.Sprintf("127.0.0.1:%d", s.cfg.Port)
 	if s.cfg.AllowLAN {
 		bindAddr = fmt.Sprintf("0.0.0.0:%d", s.cfg.Port)
 	}
 
-
-
 	s.httpSrv = &http.Server{
-		Addr:         bindAddr,
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:              bindAddr,
+		Handler:           mux,
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
 	}
 
+	listener, err := net.Listen("tcp", bindAddr)
+	if err != nil {
+		return fmt.Errorf("start dashboard on %s: %w", bindAddr, err)
+	}
 	go func() {
-		_ = s.httpSrv.ListenAndServe()
+		if err := s.httpSrv.Serve(listener); err != nil && err != http.ErrServerClosed && s.fastLog != nil {
+			s.fastLog.Error("WEB", "Dashboard server stopped unexpectedly: %v", err)
+		}
 	}()
 
 	return nil
@@ -114,15 +129,26 @@ func (s *Server) Start() error {
 // Stop stops the web server gracefully.
 func (s *Server) Stop() {
 	if s.httpSrv != nil {
-		_ = s.httpSrv.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.httpSrv.Shutdown(ctx)
 	}
 }
 
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Cache-Control", "no-store")
 		if s.cfg.Username != "" && s.cfg.Password != "" {
 			user, pass, ok := r.BasicAuth()
-			if !ok || user != s.cfg.Username || pass != s.cfg.Password {
+			userHash := sha256.Sum256([]byte(user))
+			passHash := sha256.Sum256([]byte(pass))
+			expectedUser := sha256.Sum256([]byte(s.cfg.Username))
+			expectedPass := sha256.Sum256([]byte(s.cfg.Password))
+			valid := subtle.ConstantTimeCompare(userHash[:], expectedUser[:]) & subtle.ConstantTimeCompare(passHash[:], expectedPass[:])
+			if !ok || valid != 1 {
 				w.Header().Set("WWW-Authenticate", `Basic realm="WAF-Shield Cyber Security"`)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
@@ -151,13 +177,13 @@ func (s *Server) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	passedPPS := uint64(0)
-	if m.SnapPPS > m.SnapDropPPS {
-		passedPPS = m.SnapPPS - m.SnapDropPPS
+	if m.SnapPPS.Load() > m.SnapDropPPS.Load() {
+		passedPPS = m.SnapPPS.Load() - m.SnapDropPPS.Load()
 	}
 
 	passedBPS := uint64(0)
-	if m.SnapBPS > m.SnapDropBPS {
-		passedBPS = m.SnapBPS - m.SnapDropBPS
+	if m.SnapBPS.Load() > m.SnapDropBPS.Load() {
+		passedBPS = m.SnapBPS.Load() - m.SnapDropBPS.Load()
 	}
 
 	geoModeStr := "AUTO"
@@ -175,31 +201,36 @@ func (s *Server) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	data := map[string]interface{}{
-		"status":           "ACTIVE",
-		"system_mode":      string(mm.GetMode()),
-		"threat_mode":      threatStr,
-		"active_preset":    activePreset,
-		"primary_vector":   string(ad.GetPrimaryAttackVector()),
-		"attack_diagnosis": ad.FormatAttackDiagnosis(),
-		"geoip_mode":       geoModeStr,
-		"uptime_sec":       int(time.Since(s.startTime).Seconds()),
-		"inbound_pps":      m.SnapPPS,
-		"passed_pps":       passedPPS,
-		"outbound_pps":     m.SnapOutPPS,
-		"dropped_pps":      m.SnapDropPPS,
-		"inbound_bps":      m.SnapBPS,
-		"passed_bps":       passedBPS,
-		"outbound_bps":     m.SnapOutBPS,
-		"dropped_bps":      m.SnapDropBPS,
-		"active_flows":     s.engine.GetUDPShield().GetFlowCount(),
-		"active_tcp":       s.engine.GetTCPShield().GetVerifiedCount(),
-		"total_bans":       m.BlacklistedIPs.Load(),
-		"drops_subnet":     m.SnapSubnet,
-		"drops_refl":       m.SnapReflection,
-		"drops_dpi":        m.SnapGameQuery,
-		"drops_oos":        m.SnapOutOfState,
-		"drops_l1":         m.SnapL1,
-		"drops_l2":         m.SnapL2,
+		"status":            "ACTIVE",
+		"system_mode":       string(mm.GetMode()),
+		"threat_mode":       threatStr,
+		"active_preset":     activePreset,
+		"primary_vector":    string(ad.GetPrimaryAttackVector()),
+		"attack_diagnosis":  ad.FormatAttackDiagnosis(),
+		"geoip_mode":        geoModeStr,
+		"uptime_sec":        int(time.Since(s.startTime).Seconds()),
+		"inbound_pps":       m.SnapPPS.Load(),
+		"passed_pps":        passedPPS,
+		"outbound_pps":      m.SnapOutPPS.Load(),
+		"dropped_pps":       m.SnapDropPPS.Load(),
+		"inbound_bps":       m.SnapBPS.Load(),
+		"passed_bps":        passedBPS,
+		"outbound_bps":      m.SnapOutBPS.Load(),
+		"dropped_bps":       m.SnapDropBPS.Load(),
+		"active_flows":      s.engine.GetUDPShield().GetFlowCount(),
+		"active_tcp":        s.engine.GetTCPShield().GetVerifiedCount(),
+		"total_bans":        m.BlacklistedIPs.Load(),
+		"drops_subnet":      m.SnapSubnet.Load(),
+		"drops_refl":        m.SnapReflection.Load(),
+		"drops_dpi":         m.SnapGameQuery.Load(),
+		"drops_entropy":     m.SnapEntropy.Load(),
+		"drops_unverified":  m.SnapUnverified.Load(),
+		"drops_oos":         m.SnapOutOfState.Load(),
+		"drops_l1":          m.SnapL1.Load(),
+		"drops_l2":          m.SnapL2.Load(),
+		"botnet_detected":   m.BotnetDetected.Load(),
+		"unique_source_ips": m.UniqueSourceIPs.Load(),
+		"unique_subnets":    m.UniqueSubnets.Load(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -350,6 +381,7 @@ func (s *Server) handleAPIPreset(w http.ResponseWriter, r *http.Request) {
 	switch preset {
 	case "HYBRID":
 
+		s.engine.ConfigurePeaceUDP(120, 1048576, 350, 1200, true, true)
 		udpShield.SetRateLimits(120, 1048576, 350, 1200)
 		udpShield.SetDPI(true)
 		if udpShield.GameShield != nil {
@@ -357,23 +389,31 @@ func (s *Server) handleAPIPreset(w http.ResponseWriter, r *http.Request) {
 		}
 		tcpShield.SetMaxConn(100)
 		tcpShield.SetStrict(false)
+		s.engine.SetGeoIPMode(engine.GeoIPModeAuto)
 		s.engine.GetModeManager().SetMode(engine.ModeAuto)
 		msg = "Applied Preset: 🌟 Full-Stack Hybrid Shield (Active Game DPI + High-Concurrency Web API)"
 	case "GAME":
+		s.engine.ConfigurePeaceUDP(120, 1048576, 350, 1200, true, true)
 		udpShield.SetRateLimits(120, 1048576, 350, 1200)
 		udpShield.SetDPI(true)
 		if udpShield.GameShield != nil {
 			udpShield.GameShield.SetEnabled(true)
 		}
 		tcpShield.SetStrict(false)
+		s.engine.SetGeoIPMode(engine.GeoIPModeAuto)
 		s.engine.GetModeManager().SetMode(engine.ModeAuto)
 		msg = "Applied Preset: 🎮 Universal Game Server Shield (120 PPS/Flow, 350 PPS/IP, Query DPI=ON)"
 	case "WEB":
+		s.engine.ConfigurePeaceUDP(200, 5242880, 500, 2000, false, false)
 		udpShield.SetRateLimits(200, 5242880, 500, 2000)
 		udpShield.SetDPI(false)
+		if udpShield.GameShield != nil {
+			udpShield.GameShield.SetEnabled(false)
+		}
 		tcpShield.SetStrict(false)
+		s.engine.SetGeoIPMode(engine.GeoIPModeAuto)
 		s.engine.GetModeManager().SetMode(engine.ModeAuto)
-		msg = "Applied Preset: 🌐 High-Concurrency Web & API Shield (Stateless SYN Proxy, 200 Conns/Subnet)"
+		msg = "Applied Preset: 🌐 High-Concurrency Web & API Shield (Stateful SYN limiting, 200 Conns/Subnet)"
 	case "STRICT":
 		s.engine.GetModeManager().SetMode(engine.ModeOn)
 		s.engine.SetGeoIPMode(engine.GeoIPModeOn)
@@ -384,7 +424,6 @@ func (s *Server) handleAPIPreset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid preset", http.StatusBadRequest)
 		return
 	}
-
 
 	s.mu.Lock()
 	s.activePreset = preset
@@ -401,7 +440,6 @@ func (s *Server) handleAPIPreset(w http.ResponseWriter, r *http.Request) {
 		"msg":    msg,
 	})
 }
-
 
 func (s *Server) handleAPIPorts(w http.ResponseWriter, r *http.Request) {
 	ports := s.engine.GetDiscovery().GetPorts()
@@ -892,7 +930,7 @@ const embeddedHTML = `<!DOCTYPE html>
                     <div class="meter-row"><span>Active UDP Flow Buckets</span><b id="valFlows" style="color:var(--cyan);">0</b></div>
                     <div class="meter-bar"><div id="barFlows" class="meter-fill" style="background:var(--cyan); width:5%;"></div></div>
 
-                    <div class="meter-row"><span>Verified TCP Sockets (SYN Proxy)</span><b id="valTCP" style="color:var(--green);">0</b></div>
+                    <div class="meter-row"><span>Tracked TCP Sessions</span><b id="valTCP" style="color:var(--green);">0</b></div>
                     <div class="meter-bar"><div id="barTCP" class="meter-fill" style="background:var(--green); width:5%;"></div></div>
 
                     <div class="meter-row"><span>Quarantined Attackers (Bans)</span><b id="valBansCount" style="color:var(--red);">0</b></div>
@@ -904,7 +942,7 @@ const embeddedHTML = `<!DOCTYPE html>
                     <div style="display:flex; flex-direction:column; gap:10px; font-size:13px;">
                         <div style="display:flex; justify-content:space-between;"><span>Layer 1: Garbage / Reflection Filter</span><b style="color:var(--green);">ACTIVE</b></div>
                         <div style="display:flex; justify-content:space-between;"><span>Layer 2: Socket Discovery (1-65535)</span><b style="color:var(--green);">ACTIVE</b></div>
-                        <div style="display:flex; justify-content:space-between;"><span>Layer 3: Stateless SYN Cookie (RFC 4987)</span><b style="color:var(--green);">ARMED</b></div>
+                        <div style="display:flex; justify-content:space-between;"><span>Layer 3: Stateful SYN / ACK Scrubbing</span><b style="color:var(--green);">ARMED</b></div>
                         <div style="display:flex; justify-content:space-between;"><span>Layer 4: UDP Token Bucket / Subnet /24</span><b style="color:var(--green);">ARMED</b></div>
                         <div style="display:flex; justify-content:space-between;"><span>Geo-IP Filter (Vietnam Binary Tree)</span><b id="valGeoStatus" style="color:var(--yellow);">AUTO</b></div>
                     </div>
@@ -931,11 +969,27 @@ const embeddedHTML = `<!DOCTYPE html>
                     <div class="card-title">Out-of-State / ACK Drops</div>
                     <div id="dropOOS" class="card-val" style="color:var(--red);">0</div>
                 </div>
+                <div class="card" id="botnetCard">
+                    <div class="card-header">
+                        <div class="card-title">Distributed Botnet Detector</div>
+                        <svg width="28" height="28" fill="none" stroke="var(--purple)" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="6" r="3"/><circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M10 8.5L6.5 14M14 8.5l3.5 5.5M8 17h8"/></svg>
+                    </div>
+                    <div id="valBotnetStatus" class="card-val" style="color:var(--green);">CLEAR</div>
+                    <div class="card-sub"><span id="valUniqueIPs">0</span> IP / <span id="valUniqueSubnets">0</span> subnet trong cửa sổ gần nhất</div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">Behavior Verification Drops</div>
+                        <svg width="28" height="28" fill="none" stroke="var(--cyan)" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l5 5L20 6"/><path d="M12 22C6.5 20.5 3 16 3 10V5l9-3 9 3v5c0 6-3.5 10.5-9 12z"/></svg>
+                    </div>
+                    <div id="dropBehavior" class="card-val" style="color:var(--cyan);">0</div>
+                    <div class="card-sub">Two-way + entropy verification</div>
+                </div>
             </div>
             <div class="card">
                 <h3 style="margin-bottom:12px; font-size:15px;">Active Attack Classification & Strategy</h3>
                 <p id="radarDesc" style="color:var(--text-dim); line-height:1.6; font-size:13px;">
-                    All heuristic filters are monitoring baseline packet rates. When traffic surges above thresholds, WAF-Shield dynamically engages stateless cryptographic SYN Cookies, graduated subnet bans, and protocol query verification.
+                    Bộ phát hiện theo dõi baseline, số IP/subnet duy nhất và tỷ trọng UDP/SYN. Khi có chiến dịch phân tán, hệ thống chuyển War Mode, siết rate-limit, cách ly nguồn lặp lại và xác thực trạng thái giao tiếp.
                 </p>
             </div>
         </section>
@@ -953,7 +1007,7 @@ const embeddedHTML = `<!DOCTYPE html>
                             <span style="color:var(--yellow);">Full-Stack Hybrid Shield (Cả Game + Web/API)</span>
                             <span id="tagPresetHybrid" class="nav-badge badge-peace" style="display:none; font-size:10px;">ACTIVE</span>
                         </div>
-                        <div class="preset-desc">Tối ưu hoàn hảo cho VPS chạy <b>cả Game Server (UDP) lẫn Website / REST API (TCP)</b> cùng lúc. Bật cả Game Query DPI cho cổng game, vừa mở rộng kết nối đồng thời và bật Stateless SYN Proxy cho cổng web.</div>
+                        <div class="preset-desc">Tối ưu cho VPS chạy <b>cả Game Server (UDP) lẫn Website / REST API (TCP)</b>. Bật Game Query DPI và theo dõi trạng thái TCP với giới hạn SYN theo IP/subnet.</div>
                     </div>
                     <button class="btn btn-primary" id="btnPresetHybrid" onclick="applyPreset('HYBRID')">Kích Hoạt Cả Game & Web</button>
                 </div>
@@ -975,7 +1029,7 @@ const embeddedHTML = `<!DOCTYPE html>
                             <span>High-Concurrency Web & API Shield</span>
                             <span id="tagPresetWeb" class="nav-badge badge-peace" style="display:none; font-size:10px;">ACTIVE</span>
                         </div>
-                        <div class="preset-desc">Tối ưu cho Web Server, REST API và WebSocket (HTTP/1.1, HTTP/2, HTTPS). Tăng cường kết nối đồng thời và bảo vệ bằng Stateless SYN Proxy.</div>
+                        <div class="preset-desc">Tối ưu cho Web Server, REST API và WebSocket. Tăng giới hạn kết nối đồng thời, lọc SYN/ACK sai trạng thái và dọn kết nối treo.</div>
                     </div>
                     <button class="btn btn-primary" id="btnPresetWeb" onclick="applyPreset('WEB')">Kích Hoạt Web Shield</button>
                 </div>
@@ -1207,6 +1261,12 @@ const embeddedHTML = `<!DOCTYPE html>
                 document.getElementById('dropRefl').innerText = data.drops_refl;
                 document.getElementById('dropDPI').innerText = data.drops_dpi;
                 document.getElementById('dropOOS').innerText = data.drops_oos;
+                document.getElementById('dropBehavior').innerText = (data.drops_entropy || 0) + (data.drops_unverified || 0);
+                document.getElementById('valUniqueIPs').innerText = data.unique_source_ips || 0;
+                document.getElementById('valUniqueSubnets').innerText = data.unique_subnets || 0;
+                const botnetStatus = document.getElementById('valBotnetStatus');
+                botnetStatus.innerText = data.botnet_detected ? 'DETECTED' : 'CLEAR';
+                botnetStatus.style.color = data.botnet_detected ? 'var(--red)' : 'var(--green)';
 
                 // Update 2 Header Control Buttons & Status Badge
                 currentSysMode = data.system_mode || 'AUTO';
@@ -1391,7 +1451,7 @@ const embeddedHTML = `<!DOCTYPE html>
                         rows.push('<tr>' +
                             '<td><b style="color:#fff;">Port ' + p + '</b></td>' +
                             '<td><span style="color:var(--blue); font-weight:700;">TCP</span></td>' +
-                            '<td>Stateless SYN Proxy + Token Bucket</td>' +
+                            '<td>Stateful SYN/ACK tracking + Token Bucket</td>' +
                             '<td><span class="nav-badge badge-peace">PROTECTED</span></td>' +
                         '</tr>');
                     });

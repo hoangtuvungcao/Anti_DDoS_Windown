@@ -1,3 +1,5 @@
+//go:build windows
+
 package cli
 
 import (
@@ -117,7 +119,6 @@ func setCursorHome() {
 
 type ViewPage int
 
-
 const (
 	PageMain ViewPage = iota
 	PageAttackRadar
@@ -191,8 +192,6 @@ func (d *Dashboard) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			d.metrics.Snapshot()
-
 			// Update Sparkline History
 			d.mu.Lock()
 			if len(d.ppsHistory) >= d.historyCap {
@@ -200,9 +199,9 @@ func (d *Dashboard) loop() {
 				d.outPPSHistory = d.outPPSHistory[1:]
 				d.dropPPSHistory = d.dropPPSHistory[1:]
 			}
-			d.ppsHistory = append(d.ppsHistory, d.metrics.SnapPPS)
-			d.outPPSHistory = append(d.outPPSHistory, d.metrics.SnapOutPPS)
-			d.dropPPSHistory = append(d.dropPPSHistory, d.metrics.SnapDropPPS)
+			d.ppsHistory = append(d.ppsHistory, d.metrics.SnapPPS.Load())
+			d.outPPSHistory = append(d.outPPSHistory, d.metrics.SnapOutPPS.Load())
+			d.dropPPSHistory = append(d.dropPPSHistory, d.metrics.SnapDropPPS.Load())
 			d.mu.Unlock()
 
 			d.render()
@@ -211,7 +210,6 @@ func (d *Dashboard) loop() {
 		}
 	}
 }
-
 
 func (d *Dashboard) inputLoop() {
 	buf := make([]byte, 1)
@@ -556,8 +554,6 @@ func (d *Dashboard) render() {
 	fmt.Print(sb.String())
 }
 
-
-
 func (d *Dashboard) renderTabBar() string {
 	tabs := []struct {
 		page ViewPage
@@ -596,19 +592,19 @@ func (d *Dashboard) renderMainPage(sb *strings.Builder, m *stats.Metrics) {
 	d.mu.Unlock()
 
 	row1 := fmt.Sprintf("  %sINBOUND (RX)%s      %s%-9s%s | %-9s | %s",
-		yellow, reset, green, formatPPS(m.SnapPPS), reset, formatBPS(m.SnapBPS), ppsSpark)
+		yellow, reset, green, formatPPS(m.SnapPPS.Load()), reset, formatBPS(m.SnapBPS.Load()), ppsSpark)
 	renderLine(sb, row1, 68)
 
 	rowOut := fmt.Sprintf("  %sOUTBOUND (TX)%s     %s%-9s%s | %-9s | %s",
-		cyan, reset, cyan, formatPPS(m.SnapOutPPS), reset, formatBPS(m.SnapOutBPS), outSpark)
+		cyan, reset, cyan, formatPPS(m.SnapOutPPS.Load()), reset, formatBPS(m.SnapOutBPS.Load()), outSpark)
 	renderLine(sb, rowOut, 68)
 
 	dropColor := green
-	if m.SnapDropPPS > 0 {
+	if m.SnapDropPPS.Load() > 0 {
 		dropColor = red
 	}
 	row2 := fmt.Sprintf("  %sBLOCKED ATTACK%s    %s%-9s%s | %-9s | %s",
-		red, reset, dropColor, formatPPS(m.SnapDropPPS), reset, formatBPS(m.SnapDropBPS), dropSpark)
+		red, reset, dropColor, formatPPS(m.SnapDropPPS.Load()), reset, formatBPS(m.SnapDropBPS.Load()), dropSpark)
 	renderLine(sb, row2, 68)
 
 	row3 := fmt.Sprintf("  %sPROTECTED PORTS%s   TCP: %s%-14s%s UDP: %s%-14s%s",
@@ -624,16 +620,13 @@ func (d *Dashboard) renderMainPage(sb *strings.Builder, m *stats.Metrics) {
 
 	row5 := fmt.Sprintf("  %sDEFENSE DROPS%s     /24:%s%-4d%s|Refl:%s%-4d%s|DPI:%s%-4d%s|OOS:%s%-4d%s|L1:%s%-4d%s",
 		cyan, reset,
-		layerColor(m.SnapSubnet), m.SnapSubnet, reset,
-		layerColor(m.SnapReflection), m.SnapReflection, reset,
-		layerColor(m.SnapGameQuery), m.SnapGameQuery, reset,
-		layerColor(m.SnapOutOfState), m.SnapOutOfState, reset,
-		layerColor(m.SnapL1), m.SnapL1, reset)
+		layerColor(m.SnapSubnet.Load()), m.SnapSubnet.Load(), reset,
+		layerColor(m.SnapReflection.Load()), m.SnapReflection.Load(), reset,
+		layerColor(m.SnapGameQuery.Load()), m.SnapGameQuery.Load(), reset,
+		layerColor(m.SnapOutOfState.Load()), m.SnapOutOfState.Load(), reset,
+		layerColor(m.SnapL1.Load()), m.SnapL1.Load(), reset)
 	renderLine(sb, row5, 68)
 }
-
-
-
 
 func (d *Dashboard) renderAttackRadarPage(sb *strings.Builder, m *stats.Metrics) {
 	ad := d.eng.GetAutoDefense()
@@ -646,15 +639,15 @@ func (d *Dashboard) renderAttackRadarPage(sb *strings.Builder, m *stats.Metrics)
 	renderLine(sb, row1, 68)
 
 	row2 := fmt.Sprintf("  %sDistributed /24:%s  %-6d drops/s  %sUDP Reflection:%s %-6d drops/s",
-		dim, reset, m.SnapSubnet, dim, reset, m.SnapReflection)
+		dim, reset, m.SnapSubnet.Load(), dim, reset, m.SnapReflection.Load())
 	renderLine(sb, row2, 68)
 
 	row3 := fmt.Sprintf("  %sProtocol Query Spam:%-6d drops/s %sTCP Out-of-State:%s%-6d drops/s",
-		dim, m.SnapGameQuery, dim, reset, m.SnapOutOfState)
+		dim, m.SnapGameQuery.Load(), dim, reset, m.SnapOutOfState.Load())
 	renderLine(sb, row3, 68)
 
 	row4 := fmt.Sprintf("  %sL1 Protocol Trash:%s %-6d drops/s  %sClosed Port Scan:%s%-6d drops/s",
-		dim, reset, m.SnapL1, dim, reset, m.SnapL2)
+		dim, reset, m.SnapL1.Load(), dim, reset, m.SnapL2.Load())
 	renderLine(sb, row4, 68)
 
 	renderLine(sb, "  "+cyan+"Mitigation Strategy: Adaptive Heuristic Throttling & Fast Subnet Culling"+reset, 68)
@@ -859,7 +852,6 @@ func renderSparkline(history []uint64, maxVal uint64) string {
 	return cyan + sb.String() + reset
 }
 
-
 func formatPPS(pps uint64) string {
 	if pps >= 1000000 {
 		return fmt.Sprintf("%.1fM pps", float64(pps)/1000000)
@@ -960,7 +952,6 @@ func visualLen(s string) int {
 	return length
 }
 
-
 func renderLine(sb *strings.Builder, content string, width int) {
 	vLen := visualLen(content)
 	padding := width - vLen
@@ -970,7 +961,3 @@ func renderLine(sb *strings.Builder, content string, width int) {
 	}
 	sb.WriteString(bold + cyan + "║\n" + reset)
 }
-
-
-
-

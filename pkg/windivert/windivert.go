@@ -1,3 +1,5 @@
+//go:build windows
+
 // Package windivert provides pure-Go bindings for WinDivert 2.2 via syscall.
 // No CGO required — calls WinDivert.dll directly through Windows syscall interface.
 package windivert

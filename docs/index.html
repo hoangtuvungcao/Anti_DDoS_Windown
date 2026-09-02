@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>WAF-Shield Enterprise v3.0 — Tường Lửa Anti-DDoS Đa Năng Cho Windows</title>
-    <meta name="description" content="Hệ thống tường lửa Anti-DDoS chuyên dụng cho Game Server, Web Server và API trên Windows. Tốc độ nhân NDIS, độ trễ 0ms, giám sát 2 chiều RX/TX.">
+    <title>WAF-Shield Enterprise v3.1 — Packet Firewall Anti-DDoS cho Windows</title>
+    <meta name="description" content="Tường lửa Anti-DDoS cho Game Server, Web Server và API trên Windows, sử dụng WinDivert với giám sát RX/TX và phát hiện botnet phân tán.">
     <meta name="keywords" content="Anti DDoS Windows, Game Server DDoS Protection, WAF Shield, WinDivert Firewall, Anti SYN Flood, Anti UDP Flood">
-    <meta property="og:title" content="WAF-Shield Enterprise v3.0 — Anti-DDoS Firewall">
+    <meta property="og:title" content="WAF-Shield Enterprise v3.1 — Anti-DDoS Firewall">
     <meta property="og:description" content="Bảo vệ toàn diện Game Server và Web Server trên Windows trước các cuộc tấn công DDoS quy mô lớn.">
     <meta property="og:type" content="website">
 
@@ -42,7 +42,7 @@
                 </svg>
                 <div>
                     <span class="brand-title">WAF-SHIELD</span>
-                    <span class="brand-badge">ENTERPRISE v3.0</span>
+                    <span class="brand-badge">ENTERPRISE v3.1</span>
                 </div>
             </a>
 
@@ -74,15 +74,15 @@
                 </div>
                 <h1 class="hero-title">
                     Tường Lửa Chống DDoS <br>
-                    <span class="gradient-text">Zero-Latency Cho Windows</span>
+                    <span class="gradient-text">Thích Ứng Cho Windows</span>
                 </h1>
                 <p class="hero-desc">
-                    Giải pháp tường lửa nhân mạng NDIS chuyên dụng bảo vệ toàn diện <b>Game Server (UDP/TCP), Web Server & REST API</b>. Triệt tiêu mọi đòn tấn công SYN Flood, UDP Query Spam, Amplification và Carpet Bombing với độ trễ 0ms.
+                    Lớp lọc gói WinDivert dành cho <b>Game Server (UDP/TCP), Web Server & REST API</b>, nhận diện SYN Flood, UDP Query Spam, Amplification, Carpet Bombing và botnet phân tán nhiều subnet.
                 </p>
                 <div class="hero-actions">
                     <a href="#download" class="btn btn-primary btn-lg">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        Tải Bản Phát Hành (v3.0)
+                        Tải Bản Phát Hành (v3.1)
                     </a>
                     <a href="#docs" class="btn btn-secondary btn-lg">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -91,12 +91,12 @@
                 </div>
                 <div class="hero-metrics">
                     <div class="metric-box">
-                        <h4>10,000,000+</h4>
-                        <p>Khả Năng Xử Lý Gói (PPS)</p>
+                        <h4>64 SHARDS</h4>
+                        <p>State Store Đồng Thời</p>
                     </div>
                     <div class="metric-box">
-                        <h4>0.01 µs</h4>
-                        <p>Tốc Độ Lọc Nhân Mạng</p>
+                        <h4>1 GIÂY</h4>
+                        <p>Cửa Sổ Phát Hiện</p>
                     </div>
                     <div class="metric-box">
                         <h4>1-65535</h4>
@@ -133,7 +133,7 @@
                         </defs>
                     </svg>
                     <div style="font-size:12px; font-weight:700; color:var(--cyan); margin-top:12px; font-family:var(--font-mono);">
-                        [ L3 • L4 • L7 DEFENSE ACTIVE ]
+                        [ L0 • L1 • L2 • L3 • L4 ACTIVE ]
                     </div>
                 </div>
 
@@ -148,6 +148,14 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <section class="visual-explainer" aria-labelledby="pipeline-title">
+        <div class="container">
+            <h2 id="pipeline-title" class="section-title">Botnet bị nhận diện như thế nào?</h2>
+            <p class="section-desc">Detector đếm độ phân tán IP/subnet trên cửa sổ một giây và kết hợp tỷ lệ UDP/SYN, thay vì chỉ chờ từng IP tự vượt giới hạn.</p>
+            <img src="assets/defense-pipeline.svg" alt="Sơ đồ luồng phát hiện botnet phân tán và chặn gói của WAF-Shield" loading="lazy" width="1200" height="420">
         </div>
     </section>
 
@@ -168,7 +176,7 @@
                         <svg class="layer-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                     </div>
                     <h3 class="layer-title">IP & Geo-IP Filter</h3>
-                    <p class="layer-desc">Danh sách trắng Whitelist ưu tiên tuyệt đối, Danh sách đen Blacklist tự động khóa, và Bộ lọc Geo-IP Việt Nam (0.01 microsecond) khóa IP quốc tế.</p>
+                    <p class="layer-desc">Whitelist ưu tiên, blacklist tự động khóa và tra cứu dải IPv4 Việt Nam bằng binary search khi Geo-IP được bật.</p>
                 </div>
 
                 <!-- Layer 1 -->
@@ -198,7 +206,7 @@
                         <svg class="layer-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
                     </div>
                     <h3 class="layer-title">TCP Shield & Proxy</h3>
-                    <p class="layer-desc">Cơ chế Stateless SYN Cookie Proxy chống cạn kiệt bộ nhớ, chống kết nối ma (Slowloris), điều phối tốc độ mở socket cho Web, REST API, Remote Desktop 3389.</p>
+                    <p class="layer-desc">Theo dõi trạng thái SYN/ACK, giới hạn tốc độ theo IP/subnet và dọn kết nối treo để giảm SYN Flood, ACK Flood và Slowloris.</p>
                 </div>
 
                 <!-- Layer 4 -->
@@ -262,7 +270,7 @@
                         <p class="preset-desc">Tối ưu cho Web Hosting, REST API, Microservices và WebSocket (HTTP/1.1, HTTP/2, HTTPS).</p>
                     </div>
                     <ul class="preset-specs">
-                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Bật Stateless SYN Proxy chống tràn RAM</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Stateful SYN/ACK scrubbing và rate-limit</li>
                         <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Cho phép 200+ kết nối đồng thời/subnet</li>
                         <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Dọn dẹp kết nối treo Slowloris tự động</li>
                     </ul>
@@ -340,7 +348,7 @@
             </div>
 
             <div class="download-card">
-                <h3 style="font-size:26px; font-weight:800; margin-bottom:12px;">WAF-Shield Enterprise v3.0 (Windows x64)</h3>
+                <h3 style="font-size:26px; font-weight:800; margin-bottom:12px;">WAF-Shield Enterprise v3.1 (Windows x64)</h3>
                 <p style="color:var(--text-secondary); max-width:600px; margin:0 auto 28px;">
                     Gói cài đặt tự chứa đầy đủ mã thực thi, driver NDIS WinDivert, cơ sở dữ liệu Geo-IP Việt Nam và kịch bản dịch vụ tự động.
                 </p>
@@ -537,7 +545,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                 <div>
                     <div class="nav-brand" style="margin-bottom:12px;">
                         <span class="brand-title">WAF-SHIELD</span>
-                        <span class="brand-badge">v3.0</span>
+                        <span class="brand-badge">v3.1</span>
                     </div>
                     <p class="footer-desc">
                         Hệ thống tường lửa Anti-DDoS cấp độ nhân mạng NDIS cho Windows Server. Giải pháp bảo vệ trong suốt 100% cho mọi ứng dụng máy chủ và Game Server.

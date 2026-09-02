@@ -139,7 +139,7 @@ func (n *Notifier) sendDiscord(alert AlertPayload) error {
 	fields := []map[string]interface{}{
 		{"name": "Attack Vector", "value": alert.Vector, "inline": true},
 		{"name": "Peak Traffic", "value": fmt.Sprintf("%d PPS (%.2f MB/s)", alert.PeakPPS, mbps), "inline": true},
-		{"name": "Status", "value": "[ACTIVE] WAF Shield Active (0% Lag to Players)", "inline": false},
+		{"name": "Status", "value": "[ACTIVE] Host mitigation policy applied", "inline": false},
 	}
 
 	if alert.QuarantineCIDR != "" {

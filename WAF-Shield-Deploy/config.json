@@ -70,6 +70,9 @@
     // Giới hạn UDP siết chặt trên mỗi luồng khi đang bị tấn công (PPS)
     "udp_pps_per_flow": 35,
 
+    // Giới hạn băng thông mỗi luồng khi có tấn công (512 KiB/s)
+    "udp_bps_per_flow": 524288,
+
     // Giới hạn tổng UDP siết chặt từ 1 IP khi đang bị tấn công (PPS)
     "udp_pps_per_ip": 80,
 
@@ -134,7 +137,7 @@
     // Mật khẩu bảo vệ
     "password": "",
     // Cho phép truy cập từ mạng LAN / Internet (true) hoặc chỉ Localhost (false)
-    "allow_lan": true
+    "allow_lan": false
   },
 
   // ------------------------------------------------------------------------------

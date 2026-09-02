@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">Luồng phát hiện và chặn botnet của WAF-Shield</title>
+  <desc id="desc">Nguồn botnet phân tán đi qua bộ phát hiện cardinality, các lớp lọc và chỉ lưu lượng hợp lệ tới máy chủ.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071225"/><stop offset="1" stop-color="#020611"/></linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#00f0ff"/><stop offset="1" stop-color="#2563eb"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#38bdf8"/></marker>
+  </defs>
+  <rect width="1200" height="420" rx="28" fill="url(#bg)" stroke="#18345f"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="50" y="55" fill="#f8fafc" font-size="24" font-weight="700">Botnet-aware packet pipeline</text>
+    <text x="50" y="82" fill="#7f9abc" font-size="15">Quan sát toàn bộ gói → nhận diện chiến dịch phân tán → drop có lý do → telemetry thời gian thực</text>
+
+    <g transform="translate(60 130)">
+      <circle cx="40" cy="40" r="22" fill="#291321" stroke="#ef4444"/><path d="M30 40h20M40 30v20" stroke="#ef4444" stroke-width="4"/>
+      <circle cx="115" cy="15" r="18" fill="#291321" stroke="#fb7185"/><path d="M107 15h16" stroke="#fb7185" stroke-width="4"/>
+      <circle cx="120" cy="90" r="20" fill="#291321" stroke="#f97316"/><path d="M112 82l16 16m0-16l-16 16" stroke="#f97316" stroke-width="3"/>
+      <path d="M43 65l55 17M61 30l36-10" stroke="#ef4444" stroke-dasharray="5 5"/>
+      <text x="0" y="145" fill="#fca5a5" font-size="17" font-weight="700">BOTNET PHÂN TÁN</text>
+      <text x="0" y="169" fill="#94a3b8" font-size="13">Nhiều IP • nhiều /24 • PPS thấp/bot</text>
+    </g>
+
+    <path d="M235 215H355" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g transform="translate(370 120)">
+      <rect width="245" height="190" rx="20" fill="#0b1b34" stroke="#a855f7"/>
+      <g transform="translate(86 25)" fill="none" stroke="#c084fc" stroke-width="3">
+        <circle cx="36" cy="32" r="15"/><circle cx="4" cy="52" r="10"/><circle cx="68" cy="52" r="10"/>
+        <path d="M24 42L12 48m48 0L48 42M36 47v24"/>
+      </g>
+      <text x="122" y="115" text-anchor="middle" fill="#e9d5ff" font-size="17" font-weight="700">DISTRIBUTED DETECTOR</text>
+      <text x="122" y="141" text-anchor="middle" fill="#94a3b8" font-size="13">Unique IP + subnet cardinality</text>
+      <text x="122" y="164" text-anchor="middle" fill="#94a3b8" font-size="13">UDP/SYN dominance + baseline</text>
+    </g>
+
+    <path d="M630 215H735" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g transform="translate(750 105)">
+      <path d="M105 0l85 32v68c0 67-85 112-85 112S20 167 20 100V32z" fill="#071a33" stroke="url(#shield)" stroke-width="5" filter="url(#glow)"/>
+      <path d="M68 72h74M68 104h74M68 136h74" stroke="#00f0ff" stroke-width="7" stroke-linecap="round"/>
+      <text x="105" y="245" text-anchor="middle" fill="#67e8f9" font-size="17" font-weight="700">L0 → L4 MITIGATION</text>
+      <text x="105" y="269" text-anchor="middle" fill="#94a3b8" font-size="13">Rate-limit • quarantine • reason</text>
+    </g>
+
+    <path d="M960 215H1040" stroke="#10b981" stroke-width="3" marker-end="url(#arrow)"/>
+    <g transform="translate(1050 155)">
+      <rect width="95" height="120" rx="12" fill="#08251f" stroke="#10b981" stroke-width="2"/>
+      <rect x="16" y="18" width="63" height="16" rx="4" fill="#10b981" opacity=".35"/><circle cx="68" cy="26" r="4" fill="#34d399"/>
+      <rect x="16" y="48" width="63" height="16" rx="4" fill="#10b981" opacity=".35"/><circle cx="68" cy="56" r="4" fill="#34d399"/>
+      <rect x="16" y="78" width="63" height="16" rx="4" fill="#10b981" opacity=".35"/><circle cx="68" cy="86" r="4" fill="#34d399"/>
+      <text x="47" y="148" text-anchor="middle" fill="#6ee7b7" font-size="16" font-weight="700">SERVER</text>
+    </g>
+  </g>
+</svg>

@@ -27,12 +27,14 @@ const (
 
 // Errors
 var (
-	ErrTooShort    = errors.New("packet too short for IPv4 header")
-	ErrNotIPv4     = errors.New("not an IPv4 packet")
-	ErrBadIHL      = errors.New("invalid IP header length")
-	ErrTCPTooShort = errors.New("packet too short for TCP header")
-	ErrUDPTooShort = errors.New("packet too short for UDP header")
-	ErrTruncated   = errors.New("packet truncated: total length exceeds buffer")
+	ErrTooShort     = errors.New("packet too short for IPv4 header")
+	ErrNotIPv4      = errors.New("not an IPv4 packet")
+	ErrBadIHL       = errors.New("invalid IP header length")
+	ErrTCPTooShort  = errors.New("packet too short for TCP header")
+	ErrUDPTooShort  = errors.New("packet too short for UDP header")
+	ErrTruncated    = errors.New("packet truncated: total length exceeds buffer")
+	ErrBadTCPOffset = errors.New("invalid TCP data offset")
+	ErrBadUDPLength = errors.New("invalid UDP length")
 )
 
 // Packet holds parsed packet fields on the stack.
@@ -40,13 +42,13 @@ var (
 type Packet struct {
 	// IPv4 fields
 	Version    uint8
-	IHL        uint8   // Header length in 32-bit words (min 5)
+	IHL        uint8 // Header length in 32-bit words (min 5)
 	TotalLen   uint16
 	ID         uint16
-	Flags      uint8   // 3 bits: Reserved, DF, MF
-	FragOffset uint16  // 13 bits fragment offset
+	Flags      uint8  // 3 bits: Reserved, DF, MF
+	FragOffset uint16 // 13 bits fragment offset
 	TTL        uint8
-	Protocol   uint8   // 1=ICMP, 6=TCP, 17=UDP
+	Protocol   uint8 // 1=ICMP, 6=TCP, 17=UDP
 	SrcIP      [4]byte
 	DstIP      [4]byte
 
@@ -59,13 +61,12 @@ type Packet struct {
 	DstPort    uint16
 	SeqNum     uint32
 	AckNum     uint32
-	DataOffset uint8   // TCP header length in 32-bit words
-	TCPFlags   uint8   // SYN, ACK, FIN, RST, PSH, URG
+	DataOffset uint8 // TCP header length in 32-bit words
+	TCPFlags   uint8 // SYN, ACK, FIN, RST, PSH, URG
 	Window     uint16
 
 	// UDP fields (valid when Protocol == ProtoUDP)
 	UDPLength uint16
-
 
 	// Payload info
 	IPHeaderLen    int // Actual IP header byte length
@@ -157,7 +158,6 @@ func parseICMP(buf []byte, offset int, pkt *Packet) error {
 	return nil
 }
 
-
 func parseTCP(buf []byte, offset int, pkt *Packet) error {
 	// Minimum TCP header: 20 bytes
 	if len(buf) < offset+20 {
@@ -171,7 +171,13 @@ func parseTCP(buf []byte, offset int, pkt *Packet) error {
 
 	// Data offset (4 bits) from high nibble of byte 12
 	pkt.DataOffset = buf[offset+12] >> 4
+	if pkt.DataOffset < 5 {
+		return ErrBadTCPOffset
+	}
 	pkt.TransHeaderLen = int(pkt.DataOffset) * 4
+	if offset+pkt.TransHeaderLen > len(buf) || offset+pkt.TransHeaderLen > int(pkt.TotalLen) {
+		return ErrBadTCPOffset
+	}
 
 	// TCP flags from byte 13
 	pkt.TCPFlags = buf[offset+13]
@@ -198,10 +204,13 @@ func parseUDP(buf []byte, offset int, pkt *Packet) error {
 	pkt.SrcPort = binary.BigEndian.Uint16(buf[offset : offset+2])
 	pkt.DstPort = binary.BigEndian.Uint16(buf[offset+2 : offset+4])
 	pkt.UDPLength = binary.BigEndian.Uint16(buf[offset+4 : offset+6])
+	if pkt.UDPLength < 8 || offset+int(pkt.UDPLength) > int(pkt.TotalLen) {
+		return ErrBadUDPLength
+	}
 
 	pkt.TransHeaderLen = 8
 	pkt.PayloadOffset = offset + 8
-	pkt.PayloadLen = int(pkt.TotalLen) - pkt.PayloadOffset
+	pkt.PayloadLen = int(pkt.UDPLength) - 8
 	if pkt.PayloadLen < 0 {
 		pkt.PayloadLen = 0
 	}

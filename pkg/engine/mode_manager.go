@@ -36,14 +36,14 @@ func NewModeManager(initialMode string, state *StateManager, eng *Engine) *ModeM
 // SetMode updates the system mode and triggers state changes accordingly.
 func (m *ModeManager) SetMode(mode string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	mode = sanitizeMode(mode)
 	if m.currentMode == mode {
+		m.mu.Unlock()
 		return
 	}
 
 	m.currentMode = mode
+	m.mu.Unlock()
 
 	switch mode {
 	case ModeOn:
@@ -90,9 +90,13 @@ func (m *ModeManager) applyMode(isWar bool) {
 	}
 	udpShield := m.eng.GetUDPShield()
 	tcpShield := m.eng.GetTCPShield()
+	mode := m.GetMode()
+	m.eng.cfgMu.RLock()
+	cfg := m.eng.cfg
+	m.eng.cfgMu.RUnlock()
 
 	if udpShield != nil {
-		switch m.currentMode {
+		switch mode {
 		case ModeOff:
 			// OFF: disable all advanced protections, very permissive rate limits
 			udpShield.SetDPI(false)
@@ -105,31 +109,32 @@ func (m *ModeManager) applyMode(isWar bool) {
 
 		case ModeOn:
 			// ON: maximum protection
-			udpShield.SetDPI(true)
+			udpShield.SetDPI(cfg.WarEnableDPI)
 			udpShield.SetEntropy(true)
-			udpShield.SetTwoWay(true)
+			udpShield.SetTwoWay(cfg.TwoWayVerify)
 			if udpShield.GameShield != nil {
 				udpShield.GameShield.SetEnabled(true)
 			}
 			// Strict War-level rate limits
-			udpShield.SetRateLimits(40, 524288, 100, 250)
+			udpShield.SetRateLimits(cfg.WarFlowPPS, cfg.WarFlowBPS, cfg.WarIPPPS, cfg.WarSubnetPPS)
 
 		default: // AUTO
 			if isWar {
-				udpShield.SetDPI(true)
-				if m.eng.entropyMode == EntropyModeOn || m.eng.entropyMode == EntropyModeAuto {
+				udpShield.SetDPI(cfg.WarEnableDPI)
+				entropyMode := int(m.eng.entropyMode.Load())
+				if entropyMode == EntropyModeOn || entropyMode == EntropyModeAuto {
 					udpShield.SetEntropy(true)
 				} else {
 					udpShield.SetEntropy(false)
 				}
-				udpShield.SetTwoWay(true)
+				udpShield.SetTwoWay(cfg.TwoWayVerify)
 				if udpShield.GameShield != nil {
 					udpShield.GameShield.SetEnabled(true)
 				}
-				udpShield.SetRateLimits(40, 524288, 100, 250)
+				udpShield.SetRateLimits(cfg.WarFlowPPS, cfg.WarFlowBPS, cfg.WarIPPPS, cfg.WarSubnetPPS)
 			} else {
-				udpShield.SetDPI(false)
-				if m.eng.entropyMode == EntropyModeOn {
+				udpShield.SetDPI(cfg.EnableDPIShield)
+				if int(m.eng.entropyMode.Load()) == EntropyModeOn {
 					udpShield.SetEntropy(true)
 				} else {
 					udpShield.SetEntropy(false)
@@ -138,13 +143,13 @@ func (m *ModeManager) applyMode(isWar bool) {
 				if udpShield.GameShield != nil {
 					udpShield.GameShield.SetEnabled(true)
 				}
-				udpShield.SetRateLimits(80, 1048576, 250, 500)
+				udpShield.SetRateLimits(cfg.UDPFlowPPS, cfg.UDPFlowBPS, cfg.UDPPerIPPPS, cfg.SubnetPPS)
 			}
 		}
 	}
 
 	if tcpShield != nil {
-		switch m.currentMode {
+		switch mode {
 		case ModeOff:
 			tcpShield.SetStrict(false)
 		case ModeOn:
@@ -152,6 +157,22 @@ func (m *ModeManager) applyMode(isWar bool) {
 		default: // AUTO
 			tcpShield.SetStrict(isWar)
 		}
+	}
+}
+
+// ApplyCurrent applies the configured mode at startup even when it has not changed.
+func (m *ModeManager) ApplyCurrent() {
+	mode := m.GetMode()
+	switch mode {
+	case ModeOn:
+		m.state.ForceMode(ModeWar)
+		m.applyMode(true)
+	case ModeOff:
+		m.state.ForceMode(ModePeace)
+		m.applyMode(false)
+	default:
+		m.state.ResetToAuto()
+		m.applyMode(m.state.IsWarMode())
 	}
 }
 
@@ -172,5 +193,3 @@ func sanitizeMode(mode string) string {
 		return ModeAuto
 	}
 }
-
-
