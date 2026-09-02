@@ -411,13 +411,26 @@ func (e *Engine) worker(id int) {
 			continue
 		}
 
-		// ═══ LAYER 2: Socket Discovery ═══
-		if (pkt.Protocol == packet.ProtoTCP || pkt.Protocol == packet.ProtoUDP) &&
-			!e.discovery.IsListening(pkt.DstPort, pkt.Protocol == packet.ProtoTCP) {
-			e.metrics.Layer2Drops.Add(1)
-			e.metrics.DroppedPPS.Add(1)
-			e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
-			continue
+		// ═══ LAYER 2: Socket Discovery (Closed Port Scan & Attack Filter) ═══
+		if pkt.Protocol == packet.ProtoTCP {
+			// Only drop unsolicited SYN packets targeting closed ports.
+			// NEVER drop response packets (SYN-ACK, ACK, Data) for outbound connections (UltraViewer, IslePilot, HTTPS)!
+			if pkt.IsSYN() && !pkt.IsSYNACK() {
+				if !e.discovery.IsListening(pkt.DstPort, true) {
+					e.metrics.Layer2Drops.Add(1)
+					e.metrics.DroppedPPS.Add(1)
+					e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
+					continue
+				}
+			}
+		} else if pkt.Protocol == packet.ProtoUDP {
+			// For UDP: Only drop if port is closed, not a two-way response, and not DNS response
+			if !e.discovery.IsListening(pkt.DstPort, false) && !e.udpShield.verifyTwoWay(&pkt) && pkt.SrcPort != 53 {
+				e.metrics.Layer2Drops.Add(1)
+				e.metrics.DroppedPPS.Add(1)
+				e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
+				continue
+			}
 		}
 
 		// Drop UDP Amplification / Reflection Floods

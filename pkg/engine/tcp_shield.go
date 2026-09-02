@@ -195,7 +195,19 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		return FilterPass
 	}
 
-	// 4. Handle SYN packets (Connection Initiation)
+	// 4. Handle Inbound SYN-ACK Responses (Outbound Client Connections: UltraViewer, IslePilot, HTTPS)
+	if pkt.IsSYNACK() {
+		ts.verified.Set(connKey, TCPConnState{
+			VerifiedAt:   now,
+			HandshakeAt:  now,
+			LastActivity: now,
+			HasPayload:   true,
+			IsHalfOpen:   false,
+		})
+		return FilterPass
+	}
+
+	// 5. Handle Inbound SYN packets from Clients (Connection Initiation)
 	if pkt.IsSYN() {
 		// A. Check SYN rate limiter per IP (uses tcp_conn_rate_per_ip from config)
 		synEntry, _ := ts.synBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
