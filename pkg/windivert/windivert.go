@@ -93,8 +93,13 @@ var (
 
 func initDLL() {
 	initOnce.Do(func() {
-		windivertDLL = syscall.NewLazyDLL("resources/bin/WinDivert.dll")
+		// Try root directory first (current executable directory / standard DLL search), then resources/bin/
+		windivertDLL = syscall.NewLazyDLL("WinDivert.dll")
 		initErr = windivertDLL.Load()
+		if initErr != nil {
+			windivertDLL = syscall.NewLazyDLL("resources/bin/WinDivert.dll")
+			initErr = windivertDLL.Load()
+		}
 		if initErr != nil {
 			return
 		}

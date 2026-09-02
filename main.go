@@ -299,21 +299,33 @@ func isAdmin() bool {
 }
 
 func checkWinDivertFiles() bool {
-	files := []string{"resources/bin/WinDivert.dll", "resources/bin/WinDivert64.sys"}
-	ok := true
-	for _, f := range files {
+	// Check root directory first, then fallback to resources/bin/
+	hasRoot := true
+	for _, f := range []string{"WinDivert.dll", "WinDivert64.sys"} {
 		if _, err := os.Stat(f); os.IsNotExist(err) {
-			fmt.Printf("[ERROR] Missing required file: %s\n", f)
-			ok = false
+			hasRoot = false
+			break
 		}
 	}
-	if !ok {
-		fmt.Println()
-		fmt.Println("Download WinDivert 2.2.2 from: https://github.com/basil00/Divert/releases")
-		fmt.Println("Place WinDivert.dll and WinDivert64.sys in the same directory as waf-game.exe")
-		fmt.Println()
+	if hasRoot {
+		return true
 	}
-	return ok
+
+	hasBin := true
+	for _, f := range []string{"resources/bin/WinDivert.dll", "resources/bin/WinDivert64.sys"} {
+		if _, err := os.Stat(f); os.IsNotExist(err) {
+			hasBin = false
+			break
+		}
+	}
+	if hasBin {
+		return true
+	}
+
+	fmt.Println("[ERROR] Missing WinDivert driver files (WinDivert.dll and WinDivert64.sys).")
+	fmt.Println("Download WinDivert 2.2.2 from: https://github.com/basil00/Divert/releases")
+	fmt.Println("Place WinDivert.dll and WinDivert64.sys in the same directory as waf-game.exe")
+	return false
 }
 
 func enableConsoleVT() {
