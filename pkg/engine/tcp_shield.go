@@ -343,9 +343,10 @@ func (ts *TCPShield) ReapIdleConnections() int64 {
 	ts.mu.RUnlock()
 	idleCutoff := time.Duration(idleTimeoutSec) * time.Second
 	return ts.verified.SweepWithCallback(idleCutoff, func(key uint64, state TCPConnState) {
-		dstPort := uint16((key >> 16) & 0xFFFF)
-		if IsManagementPort(dstPort) {
-			return // Never kill idle management sessions (RDP/SSH)
+		srcPort := uint16((key >> 16) & 0xFFFF)
+		dstPort := uint16(key & 0xFFFF)
+		if IsManagementPort(dstPort) || IsManagementPort(srcPort) {
+			return // Never kill idle management sessions (RDP/SSH/UltraViewer)
 		}
 		ipVal := uint32(key >> 32)
 		ipKey := uint64(ipVal)
@@ -363,13 +364,17 @@ func (ts *TCPShield) ReapIdleConnections() int64 {
 // ReapHalfOpenAndZeroPayload cleans up incomplete connections and unverified zero-payload connections.
 func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 	now := time.Now().UnixNano()
-	halfOpenCutoff := now - int64(15*time.Second)    // 15s timeout for completing SYN handshake
-	zeroPayloadCutoff := now - int64(60*time.Second) // 60s timeout for established connection to send payload
+	halfOpenCutoff := now - int64(30*time.Second)     // 30s timeout for completing SYN handshake
+	zeroPayloadCutoff := now - int64(120*time.Second) // 120s timeout for established connection to send payload
+	if ts.strict {
+		zeroPayloadCutoff = now - int64(45*time.Second)
+	}
 
 	var toDelete []uint64
 	ts.verified.ForEach(func(key uint64, entry *datastore.Entry[TCPConnState]) bool {
-		dstPort := uint16((key >> 16) & 0xFFFF)
-		if IsManagementPort(dstPort) {
+		srcPort := uint16((key >> 16) & 0xFFFF)
+		dstPort := uint16(key & 0xFFFF)
+		if IsManagementPort(dstPort) || IsManagementPort(srcPort) {
 			return true // Never reap management sessions
 		}
 		state := entry.Value
@@ -401,16 +406,20 @@ func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 // ReapSlowlorisConnections forcibly terminates connections that hold open sockets but send no/low data.
 func (ts *TCPShield) ReapSlowlorisConnections() int64 {
 	now := time.Now().UnixNano()
-	slowlorisCutoff := now - int64(15*time.Second) // 15 seconds threshold
+	slowlorisCutoff := now - int64(120*time.Second) // 120s threshold in peace mode
+	if ts.strict {
+		slowlorisCutoff = now - int64(30*time.Second) // 30s threshold under War mode DDoS
+	}
 
 	var toDelete []uint64
 	ts.verified.ForEach(func(key uint64, entry *datastore.Entry[TCPConnState]) bool {
-		dstPort := uint16((key >> 16) & 0xFFFF)
-		if IsManagementPort(dstPort) {
-			return true // Never kill management sessions (RDP/SSH)
+		srcPort := uint16((key >> 16) & 0xFFFF)
+		dstPort := uint16(key & 0xFFFF)
+		if IsManagementPort(dstPort) || IsManagementPort(srcPort) {
+			return true // Never kill management sessions (RDP/SSH/UltraViewer)
 		}
 		state := entry.Value
-		// Established connection older than 15s with less than 64 bytes transferred
+		// Established connection older than threshold with less than 64 bytes transferred
 		if !state.IsHalfOpen && state.HandshakeAt > 0 && state.HandshakeAt < slowlorisCutoff && state.BytesTransferred < 64 {
 			toDelete = append(toDelete, key)
 		}

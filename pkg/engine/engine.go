@@ -60,7 +60,7 @@ type Engine struct {
 	running bool
 
 	// Logger
-	fastLogger *logger.FastLogger
+	fastLogger     *logger.FastLogger
 	attackCallback func(active bool, vector string, pps, bps, drops uint64)
 }
 

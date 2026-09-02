@@ -293,11 +293,11 @@ func TestTCPShield_SlowlorisReaper(t *testing.T) {
 	}
 	ts.ProcessTCP(ack, nil, &addr)
 
-	// Simulate slow connection by artificially setting HandshakeAt to 20 seconds ago
+	// Simulate slow connection by artificially setting HandshakeAt to 200 seconds ago
 	connKey := syn.ConnKey()
 	if entry, ok := ts.verified.Get(connKey); ok {
-		entry.Value.HandshakeAt = time.Now().UnixNano() - int64(20*time.Second)
-		entry.Value.BytesTransferred = 10 // Less than 64 bytes in 20 seconds (Slowloris pattern)
+		entry.Value.HandshakeAt = time.Now().UnixNano() - int64(200*time.Second)
+		entry.Value.BytesTransferred = 10 // Less than 64 bytes in 200 seconds (Slowloris pattern)
 	}
 
 	reaped := ts.ReapSlowlorisConnections()
