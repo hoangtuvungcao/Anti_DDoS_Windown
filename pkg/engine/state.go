@@ -128,11 +128,8 @@ func (sm *StateManager) Evaluate() {
 	sm.uniqueIPs.Store(ipBits)
 	sm.uniqueNets.Store(subnetBits)
 	protocolFlood := udp*10 >= pps*6 || syn*10 >= pps*4
-	botnetFloor := sm.triggerPPS / 4
-	if botnetFloor < 500 {
-		botnetFloor = 500
-	}
-	distributedBotnet := pps >= botnetFloor && ipBits >= 64 && subnetBits >= 16 && protocolFlood
+	// Distributed botnet requires broad cardinality (>= 500 IPs across >= 150 subnets)
+	distributedBotnet := pps >= 1000 && ipBits >= 500 && subnetBits >= 150 && protocolFlood
 	sm.botnet.Store(distributedBotnet)
 
 	if sm.isManual.Load() {
