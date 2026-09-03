@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	version    = "3.4.1"
+	version    = "3.5.0"
 	configFile = "config.json"
 )
 
@@ -222,10 +222,14 @@ func main() {
 	}, eng, metrics, fastLog)
 	webStarted := webServer.Start() == nil
 	if !webStarted {
-		fmt.Println("[WARN] Web Dashboard could not be started; check credentials, bind address and port.")
+		fmt.Printf("[WARN] Web Dashboard could not start on port %d — port may conflict with IslePilot/game server.\n", cfg.WebDashboard.Port)
+		fmt.Println("[WARN] Change web_dashboard.port in config.json (e.g. 8181) and restart.")
 	}
 	if cfg.WebDashboard.Enabled && webStarted {
-		fmt.Printf("[OK] Web Dashboard active at: http://127.0.0.1:%d\n", cfg.WebDashboard.Port)
+		fmt.Printf("[OK] Web Dashboard: http://127.0.0.1:%d\n", cfg.WebDashboard.Port)
+		if cfg.WebDashboard.AllowLAN {
+			fmt.Printf("[OK] LAN Access:    http://YOUR_SERVER_IP:%d\n", cfg.WebDashboard.Port)
+		}
 	}
 
 	wd := watchdog.NewWatchdog(fastLog)

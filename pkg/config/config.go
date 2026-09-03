@@ -161,7 +161,7 @@ func DefaultConfig() Config {
 		BlacklistIPs: []string{},
 		WebDashboard: WebDashboardConfig{
 			Enabled:  true,
-			Port:     8080,
+			Port:     8181,
 			Username: "",
 			Password: "",
 			AllowLAN: false,
@@ -324,8 +324,11 @@ func (c *Config) Validate() error {
 		if c.WebDashboard.Port < 1 || c.WebDashboard.Port > 65535 {
 			return fmt.Errorf("web_dashboard.port must be between 1 and 65535")
 		}
-		if c.WebDashboard.AllowLAN && (c.WebDashboard.Username == "" || len(c.WebDashboard.Password) < 12) {
-			return fmt.Errorf("LAN dashboard requires username and a password of at least 12 characters")
+		// When exposing dashboard on LAN/Internet, enforce authentication with a strong password.
+		if c.WebDashboard.AllowLAN {
+			if c.WebDashboard.Username == "" || len(c.WebDashboard.Password) < 12 {
+				return fmt.Errorf("LAN dashboard requires username and a password of at least 12 characters")
+			}
 		}
 		if (c.WebDashboard.Username == "") != (c.WebDashboard.Password == "") {
 			return fmt.Errorf("dashboard username and password must either both be set or both be empty")

@@ -135,15 +135,18 @@
   // 5. GIAO DIỆN WEB DASHBOARD DARK-MODE (TRUY CẬP TỪ XA QUA TRÌNH DUYỆT)
   // ------------------------------------------------------------------------------
   "web_dashboard": {
-    // Bật/Tắt Web Dashboard trực tuyến (http://IP_SERVER:8080)
+    // Bật/Tắt Web Dashboard trực tuyến
+    // QUAN TRỌNG: Port 8080 thường bị IslePilot chiếm. Dùng port 8181 (hoặc port khác) để tránh xung đột!
     "enabled": true,
-    // Cổng truy cập Web Dashboard
-    "port": 8080,
-    // Tên đăng nhập (để trống nếu không muốn đặt mật khẩu)
+    // Cổng truy cập Web Dashboard (KHÔNG dùng port 8080 nếu đang chạy IslePilot)
+    "port": 8181,
+    // Tên đăng nhập (BẮT BUỘC khi allow_lan = true)
     "username": "",
-    // Mật khẩu bảo vệ
+    // Mật khẩu bảo vệ (tối thiểu 12 ký tự khi allow_lan = true)
     "password": "",
-    // Cho phép truy cập từ mạng LAN / Internet (true) hoặc chỉ Localhost (false)
+    // Cho phép truy cập từ mạng LAN / Internet:
+    //   true  = bind 0.0.0.0 (cần username + password >= 12 ký tự)
+    //   false = chỉ localhost (http://127.0.0.1:8181)
     "allow_lan": false
   },
 

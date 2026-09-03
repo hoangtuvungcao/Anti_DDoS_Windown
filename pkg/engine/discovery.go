@@ -130,6 +130,13 @@ func (pd *PortDiscovery) IsExcluded(port uint16) bool {
 	return pd.exclude[port]
 }
 
+// AddExcludePort registers an additional port to bypass all firewall heuristics
+// at runtime. Used by the web dashboard to ensure its own HTTP traffic is never
+// blocked by the TCP or UDP shield regardless of system mode.
+func (pd *PortDiscovery) AddExcludePort(port uint16) {
+	pd.exclude[port] = true
+}
+
 // Start begins periodic scanning in a goroutine.
 func (pd *PortDiscovery) Start() {
 	go pd.loop()

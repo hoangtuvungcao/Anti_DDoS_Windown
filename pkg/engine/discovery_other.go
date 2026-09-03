@@ -35,5 +35,6 @@ func (p *PortDiscovery) IsListening(port uint16, _ bool) bool { return p.exclude
 func (p *PortDiscovery) IsEstablishedTCP(connKey uint64) bool {
 	return p.current.Load().EstablishedTCP[connKey]
 }
-func (p *PortDiscovery) Start() {}
-func (p *PortDiscovery) Stop()  {}
+func (p *PortDiscovery) AddExcludePort(port uint16) { p.exclude[port] = true }
+func (p *PortDiscovery) Start()                     {}
+func (p *PortDiscovery) Stop()                      {}
