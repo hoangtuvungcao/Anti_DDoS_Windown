@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	version    = "3.5.1"
+	version    = "3.5.2"
 	configFile = "config.json"
 )
 
@@ -226,9 +226,14 @@ func main() {
 		fmt.Println("[WARN] Change web_dashboard.port in config.json (e.g. 8181) and restart.")
 	}
 	if cfg.WebDashboard.Enabled && webStarted {
-		fmt.Printf("[OK] Web Dashboard: http://127.0.0.1:%d\n", cfg.WebDashboard.Port)
+		activePort := webServer.GetActivePort()
+		if activePort != cfg.WebDashboard.Port {
+			fmt.Printf("[OK] Web Dashboard: http://127.0.0.1:%d  (port %d was busy, auto-fallback used)\n", activePort, cfg.WebDashboard.Port)
+		} else {
+			fmt.Printf("[OK] Web Dashboard: http://127.0.0.1:%d\n", activePort)
+		}
 		if cfg.WebDashboard.AllowLAN {
-			fmt.Printf("[OK] LAN Access:    http://YOUR_SERVER_IP:%d\n", cfg.WebDashboard.Port)
+			fmt.Printf("[OK] LAN Access:    http://YOUR_SERVER_IP:%d\n", webServer.GetActivePort())
 		}
 	}
 

@@ -43,21 +43,14 @@ type Server struct {
 	httpSrv      *http.Server
 	startTime    time.Time
 	activePreset string
+	activePort   int // actual port the dashboard is listening on (may differ from cfg.Port if fallback used)
 	mu           sync.Mutex
 }
 
 // NewServer initializes the embedded web server.
 func NewServer(cfg WebConfig, eng *engine.Engine, metrics *stats.Metrics, fastLog *logger.FastLogger) *Server {
 	if cfg.Port <= 0 {
-		cfg.Port = 8080
-	}
-
-	// Critical fix: register the dashboard port as excluded so WinDivert does NOT
-	// intercept HTTP traffic to/from the dashboard itself. Without this exclusion,
-	// WAR mode TCP-shield would block inbound SYNs to port 8080 and IslePilot (or
-	// any remote management tool) could not reach the web UI.
-	if eng != nil && cfg.Enabled {
-		eng.GetDiscovery().AddExcludePort(uint16(cfg.Port))
+		cfg.Port = 8181
 	}
 
 	return &Server{
@@ -67,10 +60,14 @@ func NewServer(cfg WebConfig, eng *engine.Engine, metrics *stats.Metrics, fastLo
 		fastLog:      fastLog,
 		startTime:    time.Now(),
 		activePreset: "THE_ISLE",
+		activePort:   cfg.Port,
 	}
 }
 
 // Start launches the HTTP server in a background goroutine.
+// If the configured port is occupied (e.g. by IslePilot or the game server),
+// it automatically tries up to 9 fallback ports (port+1 … port+9) so the
+// dashboard NEVER steals a port needed by other services on the machine.
 func (s *Server) Start() error {
 	if !s.cfg.Enabled {
 		return nil
@@ -106,15 +103,45 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/mode", s.authMiddleware(s.handleAPIMode))
 	mux.HandleFunc("/api/geoip", s.authMiddleware(s.handleAPIGeoIP))
 
-	// Bind to 0.0.0.0 when AllowLAN is true so remote tools (IslePilot, etc.) can
-	// reach the dashboard. Loopback-only when AllowLAN is false.
-	bindAddr := fmt.Sprintf("127.0.0.1:%d", s.cfg.Port)
-	if s.cfg.AllowLAN {
-		bindAddr = fmt.Sprintf("0.0.0.0:%d", s.cfg.Port)
+	// Try the configured port first, then fall back to configured+1 … configured+9.
+	// This prevents WAF from stealing a port that IslePilot/game-server needs.
+	const maxPortAttempts = 10
+	var listener net.Listener
+	var lastErr error
+	for attempt := 0; attempt < maxPortAttempts; attempt++ {
+		tryPort := s.cfg.Port + attempt
+		bindHost := "127.0.0.1"
+		if s.cfg.AllowLAN {
+			bindHost = "0.0.0.0"
+		}
+		bindAddr := fmt.Sprintf("%s:%d", bindHost, tryPort)
+		ln, err := net.Listen("tcp", bindAddr)
+		if err == nil {
+			listener = ln
+			s.mu.Lock()
+			s.activePort = tryPort
+			s.mu.Unlock()
+			// Register actual port as excluded so WAF does NOT intercept its own HTTP traffic.
+			if s.engine != nil {
+				s.engine.GetDiscovery().AddExcludePort(uint16(tryPort))
+			}
+			if attempt > 0 {
+				// Configured port was busy; notify operator via log.
+				if s.fastLog != nil {
+					s.fastLog.Warn("WEB", "Port %d in use (IslePilot/game server?) — dashboard started on fallback port %d", s.cfg.Port, tryPort)
+				}
+			}
+			break
+		}
+		lastErr = err
+	}
+
+	if listener == nil {
+		return fmt.Errorf("dashboard could not bind to any port in range %d-%d: %w", s.cfg.Port, s.cfg.Port+maxPortAttempts-1, lastErr)
 	}
 
 	s.httpSrv = &http.Server{
-		Addr:              bindAddr,
+		Addr:              listener.Addr().String(),
 		Handler:           mux,
 		ReadTimeout:       10 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -123,12 +150,6 @@ func (s *Server) Start() error {
 		MaxHeaderBytes:    16 << 10,
 	}
 
-	listener, err := net.Listen("tcp", bindAddr)
-	if err != nil {
-		// Provide a clear, actionable error message when port is already occupied.
-		// Common cause: another application (e.g. IslePilot) already uses this port.
-		return fmt.Errorf("cannot bind dashboard to %s — port may be in use by another app (IslePilot/game server). Change web_dashboard.port in config.json to a different port (e.g. 8181): %w", bindAddr, err)
-	}
 	go func() {
 		if err := s.httpSrv.Serve(listener); err != nil && err != http.ErrServerClosed && s.fastLog != nil {
 			s.fastLog.Error("WEB", "Dashboard server stopped unexpectedly: %v", err)
@@ -136,6 +157,14 @@ func (s *Server) Start() error {
 	}()
 
 	return nil
+}
+
+// GetActivePort returns the port the dashboard is actually listening on.
+// This may differ from the configured port if a fallback was used.
+func (s *Server) GetActivePort() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.activePort
 }
 
 // Stop stops the web server gracefully.
