@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -199,6 +200,9 @@ func Load(path string) (*Config, error) {
 	if !bytes.Contains(cleanData, []byte(`"monitor_only"`)) {
 		cfg.PeaceMode.MonitorOnly = true
 	}
+	if !bytes.Contains(cleanData, []byte(`"strict_whitelist"`)) {
+		cfg.WarMode.StrictWhitelist = true
+	}
 
 	// Fill zero values with defaults
 	def := DefaultConfig()
@@ -287,11 +291,31 @@ func (c *Config) Validate() error {
 	if c.Workers < 0 || c.Workers > 256 {
 		return fmt.Errorf("workers must be between 0 and 256")
 	}
+	if c.Cache.MaxEntries < 1000 || c.Cache.TTLSec < 1 || c.Cache.SweepIntervalSec < 1 {
+		return fmt.Errorf("cache requires max_entries >= 1000 and positive ttl/sweep intervals")
+	}
 	if c.PeaceMode.UDPPPSPerFlow <= 0 || c.PeaceMode.UDPBPSPerFlow <= 0 || c.PeaceMode.UDPPPSPerIP <= 0 || c.PeaceMode.SubnetPPSLimit <= 0 {
 		return fmt.Errorf("peace_mode UDP limits must be positive")
 	}
+	if c.PeaceMode.BlacklistDurSec <= 0 || c.PeaceMode.TCPMaxConnPerIP <= 0 || c.PeaceMode.TCPConnRatePerIP <= 0 || c.PeaceMode.TCPMaxConnPerSubnet <= 0 || c.PeaceMode.TCPIdleTimeoutSec <= 0 {
+		return fmt.Errorf("peace_mode blacklist and TCP limits must be positive")
+	}
 	if c.WarMode.UDPPPSPerFlow <= 0 || c.WarMode.UDPBPSPerFlow <= 0 || c.WarMode.UDPPerIPPPS <= 0 || c.WarMode.SubnetPPSLimit <= 0 {
 		return fmt.Errorf("war_mode UDP limits must be positive")
+	}
+	if c.WarMode.TriggerPPS == 0 || c.WarMode.TriggerBPS == 0 || c.WarMode.CooldownSec <= 0 {
+		return fmt.Errorf("war_mode triggers and cooldown must be positive")
+	}
+	validSwitch := func(value string) bool {
+		switch strings.ToUpper(value) {
+		case "AUTO", "ON", "OFF":
+			return true
+		default:
+			return false
+		}
+	}
+	if !validSwitch(c.WarMode.EntropyMode) || !validSwitch(c.WarMode.GeoIPMode) {
+		return fmt.Errorf("war_mode entropy_mode and geoip_mode must be AUTO, ON or OFF")
 	}
 	if c.WarMode.UDPPPSPerFlow > c.PeaceMode.UDPPPSPerFlow || c.WarMode.UDPPerIPPPS > c.PeaceMode.UDPPPSPerIP || c.WarMode.SubnetPPSLimit > c.PeaceMode.SubnetPPSLimit {
 		return fmt.Errorf("war_mode rate limits must not be looser than peace_mode")
@@ -303,6 +327,15 @@ func (c *Config) Validate() error {
 		if c.WebDashboard.AllowLAN && (c.WebDashboard.Username == "" || len(c.WebDashboard.Password) < 12) {
 			return fmt.Errorf("LAN dashboard requires username and a password of at least 12 characters")
 		}
+		if (c.WebDashboard.Username == "") != (c.WebDashboard.Password == "") {
+			return fmt.Errorf("dashboard username and password must either both be set or both be empty")
+		}
+	}
+	if c.Discovery.IntervalSec <= 0 {
+		return fmt.Errorf("discovery.interval_sec must be positive")
+	}
+	if c.Notifications.CooldownSec < 0 {
+		return fmt.Errorf("notifications.cooldown_sec must not be negative")
 	}
 	for _, value := range append(append([]string{}, c.WhitelistIPs...), c.BlacklistIPs...) {
 		if ip := net.ParseIP(value); ip != nil && ip.To4() != nil {
@@ -312,6 +345,19 @@ func (c *Config) Validate() error {
 			continue
 		}
 		return fmt.Errorf("invalid IPv4/CIDR rule %q", value)
+	}
+	for _, rule := range c.CustomRules {
+		if rule.Port == 0 || (rule.Protocol != "" && strings.ToUpper(rule.Protocol) != "UDP") {
+			return fmt.Errorf("custom rule %q requires a valid port and UDP protocol", rule.Name)
+		}
+		if rule.AllowPPS <= 0 {
+			return fmt.Errorf("custom rule %q requires allow_pps > 0", rule.Name)
+		}
+		if rule.SignatureHex != "" {
+			if _, err := hex.DecodeString(rule.SignatureHex); err != nil {
+				return fmt.Errorf("custom rule %q has invalid signature_hex: %w", rule.Name, err)
+			}
+		}
 	}
 	return nil
 }
@@ -362,6 +408,9 @@ func (c *Config) ToEngineConfig() engine.EngineConfig {
 		Workers:                   c.Workers,
 		DiscoveryInterval:         time.Duration(c.Discovery.IntervalSec) * time.Second,
 		ExcludePorts:              excludePorts,
+		CacheMaxEntries:           c.Cache.MaxEntries,
+		CacheTTL:                  time.Duration(c.Cache.TTLSec) * time.Second,
+		CacheSweepInterval:        time.Duration(c.Cache.SweepIntervalSec) * time.Second,
 		UDPFlowPPS:                c.PeaceMode.UDPPPSPerFlow,
 		UDPFlowBPS:                c.PeaceMode.UDPBPSPerFlow,
 		UDPPerIPPPS:               c.PeaceMode.UDPPPSPerIP,
@@ -387,6 +436,7 @@ func (c *Config) ToEngineConfig() engine.EngineConfig {
 		TwoWayVerify:              c.WarMode.EnableTwoWay,
 		GeoIPMode:                 geoIPMode,
 		SystemMode:                c.SystemMode,
+		StrictWhitelist:           c.WarMode.StrictWhitelist,
 		WhitelistIPs:              c.WhitelistIPs,
 		BlacklistIPs:              c.BlacklistIPs,
 		GameRules:                 convertedRules,

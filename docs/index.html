@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>WAF-Shield Enterprise v3.4 — Packet Firewall Anti-DDoS cho Windows</title>
+    <title>WAF-Shield Enterprise v3.4.1 — Packet Firewall Anti-DDoS cho Windows</title>
     <meta name="description" content="Tường lửa Anti-DDoS cho Game Server, Web Server và API trên Windows, sử dụng WinDivert với giám sát RX/TX và phát hiện botnet phân tán.">
     <meta name="keywords" content="Anti DDoS Windows, Game Server DDoS Protection, WAF Shield, WinDivert Firewall, Anti SYN Flood, Anti UDP Flood">
-    <meta property="og:title" content="WAF-Shield Enterprise v3.4 — Anti-DDoS Firewall">
+    <meta property="og:title" content="WAF-Shield Enterprise v3.4.1 — Anti-DDoS Firewall">
     <meta property="og:description" content="Bảo vệ toàn diện Game Server và Web Server trên Windows trước các cuộc tấn công DDoS quy mô lớn.">
     <meta property="og:type" content="website">
 
@@ -42,7 +42,7 @@
                 </svg>
                 <div>
                     <span class="brand-title">WAF-SHIELD</span>
-                    <span class="brand-badge">ENTERPRISE v3.4</span>
+                    <span class="brand-badge">ENTERPRISE v3.4.1</span>
                 </div>
             </a>
 
@@ -82,7 +82,7 @@
                 <div class="hero-actions">
                     <a href="#download" class="btn btn-primary btn-lg">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        Tải Bản Phát Hành (v3.4)
+                        Tải Bản Phát Hành (v3.4.1)
                     </a>
                     <a href="#docs" class="btn btn-secondary btn-lg">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -280,13 +280,13 @@
                 <!-- Preset 4: Strict -->
                 <div class="preset-item">
                     <div class="preset-item-header">
-                        <span class="preset-badge" style="background:rgba(239, 68, 68, 0.15); color:var(--red); border:1px solid rgba(239, 68, 68, 0.4);">MAXIMUM LOCKDOWN 24/7</span>
-                        <h3 class="preset-title">Strict War Mode</h3>
-                        <p class="preset-desc">Chế độ phòng thủ nghiêm ngặt cao nhất dành cho các mục tiêu đang bị tấn công dữ dội.</p>
+                        <span class="preset-badge" style="background:rgba(239, 68, 68, 0.15); color:var(--red); border:1px solid rgba(239, 68, 68, 0.4);">EMERGENCY WAR — RDP SAFE</span>
+                        <h3 class="preset-title">Emergency WAR Defense</h3>
+                        <p class="preset-desc">Bật enforcement chống botnet khi đang bị tấn công, đồng thời bảo toàn phiên TCP/RDP đã xác minh và người chơi quốc tế.</p>
                     </div>
                     <ul class="preset-specs">
-                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Tự động kích hoạt Geo-IP chỉ cho phép Việt Nam</li>
-                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Siết giới hạn luồng xuống 35 PPS/flow</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Giữ Geo-IP OFF để không cắt RDP, IslePilot và người chơi quốc tế</li>
+                        <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Dùng ngưỡng WAR 250 PPS/flow thay vì khóa cứng 35 PPS</li>
                         <li><svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg> Tự động đưa attacker vào blacklist</li>
                     </ul>
                     <a href="#docs" class="btn btn-secondary btn-sm">Chi Tiết Thông Số</a>
@@ -348,7 +348,7 @@
             </div>
 
             <div class="download-card">
-                <h3 style="font-size:26px; font-weight:800; margin-bottom:12px;">WAF-Shield Enterprise v3.4 (Windows x64)</h3>
+                <h3 style="font-size:26px; font-weight:800; margin-bottom:12px;">WAF-Shield Enterprise v3.4.1 (Windows x64)</h3>
                 <p style="color:var(--text-secondary); max-width:600px; margin:0 auto 28px;">
                     Gói cài đặt tự chứa đầy đủ mã thực thi, driver NDIS WinDivert, cơ sở dữ liệu Geo-IP Việt Nam và kịch bản dịch vụ tự động.
                 </p>
@@ -504,7 +504,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                                     <option value="HYBRID">Full-Stack Hybrid (Game + Web)</option>
                                     <option value="GAME">Universal Game Shield</option>
                                     <option value="WEB">High-Concurrency Web Shield</option>
-                                    <option value="STRICT">Strict War Mode</option>
+                                    <option value="STRICT">Emergency WAR (RDP-safe)</option>
                                 </select>
                             </div>
                             <div>
@@ -546,7 +546,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                 <div>
                     <div class="nav-brand" style="margin-bottom:12px;">
                         <span class="brand-title">WAF-SHIELD</span>
-                        <span class="brand-badge">v3.4</span>
+                        <span class="brand-badge">v3.4.1</span>
                     </div>
                     <p class="footer-desc">
                         Hệ thống tường lửa Anti-DDoS cấp độ nhân mạng NDIS cho Windows Server. Giải pháp bảo vệ trong suốt 100% cho mọi ứng dụng máy chủ và Game Server.

@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,7 +29,8 @@ type GameShield struct {
 	enabled bool
 
 	// Query rate limiters per IP (5 PPS limit for game info queries)
-	queryBuckets *datastore.ShardedMap[*datastore.IPBucket]
+	queryBuckets  *datastore.ShardedMap[*datastore.IPBucket]
+	customBuckets *datastore.ShardedMap[*datastore.IPBucket]
 
 	// Custom game rules indexed by port
 	customRules map[uint16][]CustomGameRule
@@ -44,6 +46,7 @@ func NewGameShield(customRules []CustomGameRule) *GameShield {
 	gs := &GameShield{
 		enabled:        true,
 		queryBuckets:   datastore.NewShardedMap[*datastore.IPBucket](50000),
+		customBuckets:  datastore.NewShardedMap[*datastore.IPBucket](50000),
 		customRules:    make(map[uint16][]CustomGameRule),
 		a2sHeader:      []byte{0xFF, 0xFF, 0xFF, 0xFF},
 		sampHeader:     []byte{'S', 'A', 'M', 'P'},
@@ -149,17 +152,17 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 	gs.mu.RUnlock()
 
 	if hasRules {
-		for _, rule := range rules {
-			if len(rule.Signature) > 0 {
-				if bytes.Contains(payload, rule.Signature) {
-					if rule.AllowPPS > 0 {
-						bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-							return datastore.NewIPBucket(float64(rule.AllowPPS))
-						})
-						if !bucket.Value.Allow() {
-							return FilterDrop
-						}
-					}
+		for ruleIndex, rule := range rules {
+			if rule.Protocol != "" && strings.ToUpper(rule.Protocol) != "UDP" {
+				continue
+			}
+			if len(rule.Signature) == 0 || bytes.Contains(payload, rule.Signature) {
+				customKey := uint64(pkt.SrcIPUint32())<<32 | uint64(pkt.DstPort)<<16 | uint64(ruleIndex)
+				bucket, _ := gs.customBuckets.GetOrCreate(customKey, func() *datastore.IPBucket {
+					return datastore.NewIPBucket(float64(rule.AllowPPS))
+				})
+				if !bucket.Value.Allow() {
+					return FilterDrop
 				}
 			}
 		}
@@ -188,7 +191,14 @@ func isRepeatedBytePattern(payload []byte) bool {
 
 // Sweep removes expired query rate limiting buckets.
 func (gs *GameShield) Sweep(ttl time.Duration) int64 {
-	return gs.queryBuckets.Sweep(ttl)
+	return gs.queryBuckets.Sweep(ttl) + gs.customBuckets.Sweep(ttl)
+}
+
+func (gs *GameShield) EnforceCapacity(maxEntries int) int64 {
+	if maxEntries < 100 {
+		maxEntries = 100
+	}
+	return gs.queryBuckets.EvictOldest(maxEntries/2) + gs.customBuckets.EvictOldest(maxEntries/2)
 }
 
 // rakNetMagic is the 16-byte offline message data ID used in all RakNet unconnected messages.

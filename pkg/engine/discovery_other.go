@@ -9,8 +9,9 @@ import (
 
 // PortSet is a read-only snapshot of listening ports on the system.
 type PortSet struct {
-	TCP map[uint16]bool
-	UDP map[uint16]bool
+	TCP            map[uint16]bool
+	UDP            map[uint16]bool
+	EstablishedTCP map[uint64]bool
 }
 
 // PortDiscovery is a fail-open development implementation outside Windows.
@@ -24,12 +25,15 @@ func NewPortDiscovery(_ time.Duration, excludePorts []uint16) *PortDiscovery {
 	for _, port := range excludePorts {
 		p.exclude[port] = true
 	}
-	p.current.Store(&PortSet{TCP: map[uint16]bool{}, UDP: map[uint16]bool{}})
+	p.current.Store(&PortSet{TCP: map[uint16]bool{}, UDP: map[uint16]bool{}, EstablishedTCP: map[uint64]bool{}})
 	return p
 }
 
 func (p *PortDiscovery) GetPorts() *PortSet                   { return p.current.Load() }
 func (p *PortDiscovery) IsExcluded(port uint16) bool          { return p.exclude[port] }
 func (p *PortDiscovery) IsListening(port uint16, _ bool) bool { return p.exclude[port] }
-func (p *PortDiscovery) Start()                               {}
-func (p *PortDiscovery) Stop()                                {}
+func (p *PortDiscovery) IsEstablishedTCP(connKey uint64) bool {
+	return p.current.Load().EstablishedTCP[connKey]
+}
+func (p *PortDiscovery) Start() {}
+func (p *PortDiscovery) Stop()  {}

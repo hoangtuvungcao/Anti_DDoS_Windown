@@ -3,6 +3,7 @@
 package datastore
 
 import (
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -189,58 +190,55 @@ func (sm *ShardedMap[V]) SweepWithCallback(ttl time.Duration, cb func(key uint64
 }
 
 // EvictOldest removes the OLDEST entries (by LastSeen) when map exceeds maxItems.
-// Bug fix: previous version deleted random entries due to Go map non-deterministic iteration.
-// Now properly finds the minimum LastSeen entry per shard for true LRU eviction.
+// Candidates are ordered globally so uneven shard distribution still reaches
+// the requested ceiling.
 // Returns number evicted.
 func (sm *ShardedMap[V]) EvictOldest(targetSize int) int64 {
+	return sm.EvictOldestWithCallback(targetSize, nil)
+}
+
+// EvictOldestWithCallback evicts to targetSize and reports each removed item.
+func (sm *ShardedMap[V]) EvictOldestWithCallback(targetSize int, cb func(key uint64, val V)) int64 {
 	current := sm.count.Load()
 	if current <= int64(targetSize) {
 		return 0
 	}
 
 	toRemove := current - int64(targetSize)
-	var removed int64
-
-	perShard := int(toRemove/NumShards) + 1
-
+	type candidate struct {
+		key      uint64
+		lastSeen int64
+	}
+	candidates := make([]candidate, 0, current)
 	for i := range sm.shards {
+		s := &sm.shards[i]
+		s.mu.RLock()
+		for key, entry := range s.items {
+			candidates = append(candidates, candidate{key: key, lastSeen: atomic.LoadInt64(&entry.LastSeen)})
+		}
+		s.mu.RUnlock()
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].lastSeen < candidates[j].lastSeen })
+
+	var removed int64
+	for _, item := range candidates {
 		if removed >= toRemove {
 			break
 		}
-		s := &sm.shards[i]
+		s := sm.getShard(item.key)
 		s.mu.Lock()
-
-		// Collect keys sorted by LastSeen ascending (oldest first)
-		type kv struct {
-			key      uint64
-			lastSeen int64
+		entry, exists := s.items[item.key]
+		if exists {
+			delete(s.items, item.key)
 		}
-		candidates := make([]kv, 0, len(s.items))
-		for k, e := range s.items {
-			candidates = append(candidates, kv{k, atomic.LoadInt64(&e.LastSeen)})
-		}
-
-		// Partial sort: find the perShard oldest via simple O(N) selection
-		// For production correctness, we do a full sort only of needed slice
-		n := len(candidates)
-		delCount := perShard
-		if delCount > n {
-			delCount = n
-		}
-		// O(N * delCount) selection of delCount oldest — delCount is tiny (~1)
-		for d := 0; d < delCount; d++ {
-			minIdx := d
-			for j := d + 1; j < n; j++ {
-				if candidates[j].lastSeen < candidates[minIdx].lastSeen {
-					minIdx = j
-				}
-			}
-			candidates[d], candidates[minIdx] = candidates[minIdx], candidates[d]
-			delete(s.items, candidates[d].key)
-			removed++
-		}
-
 		s.mu.Unlock()
+		if !exists {
+			continue
+		}
+		if cb != nil {
+			cb(item.key, entry.Value)
+		}
+		removed++
 	}
 
 	sm.count.Add(-removed)

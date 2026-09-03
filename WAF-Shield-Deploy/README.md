@@ -1,6 +1,6 @@
 <p align="center"><img src="app_256.png" width="132" alt="Biểu tượng WAF-Shield"></p>
 
-# WAF-Shield Enterprise v3.4 — Packet Firewall Anti-DDoS cho Windows
+# WAF-Shield Enterprise v3.4.1 — Packet Firewall Anti-DDoS cho Windows
 
 **WAF-Shield Enterprise** là giải pháp tường lửa và trung tâm điều hành bảo mật (SOC) chuyên dụng chống tấn công từ chối dịch vụ (**Anti-DDoS**) hoạt động trực tiếp trên nhân mạng Windows (Windows Server 2012, 2012 R2, 2016, 2019, 2022, 2025 và Windows 10, Windows 11).
 
@@ -10,7 +10,7 @@ Hệ thống chặn gói IPv4 qua WinDivert trước khi lưu lượng tới soc
 
 ---
 
-## 🌟 TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.4
+## 🌟 TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.4.1
 
 1. **📊 Giám Sát Lưu Lượng Mạng 2 Chiều Toàn Diện (Bidirectional RX & TX Telemetry)**:
    - Theo dõi song song **Lưu lượng đi vào (Inbound RX)** và **Lưu lượng phản hồi đi ra (Outbound TX)**.
@@ -21,7 +21,7 @@ Hệ thống chặn gói IPv4 qua WinDivert trước khi lưu lượng tới soc
    - **🌟 Full-Stack Hybrid Shield**: Chế độ tối ưu hoàn hảo cho máy chủ chạy **cả Game Server (UDP) và Website / REST API (TCP)** cùng lúc.
    - **🎮 Universal Game Server Shield**: Tối ưu chuyên sâu cho Game Server thời gian thực (**UDP Realtime**), bật bộ lọc Query Spam DPI và điều phối 120 PPS/luồng.
    - **🌐 High-Concurrency Web & API Shield**: Theo dõi trạng thái SYN/ACK, giới hạn tốc độ theo IP/subnet và dọn kết nối treo cho Web Server, REST API và WebSocket.
-   - **⚔️ Maximum Lockdown Defense**: Khóa chặt máy chủ 24/7 chỉ cho phép IP Việt Nam và bật toàn bộ lớp bảo vệ nghiêm ngặt.
+   - **⚔️ Emergency WAR Defense**: Bật enforcement chống botnet, giữ Geo-IP OFF và bảo toàn phiên TCP/RDP đã xác minh.
 
 3. **🌍 Bộ Lọc Vị Trí Địa Lý Geo-IP Việt Nam**:
    - Tích hợp sẵn cơ sở dữ liệu `vn.zone` chứa hàng chục nghìn dải IP Việt Nam (Viettel, VNPT, FPT, CMC...).
@@ -33,7 +33,7 @@ Hệ thống chặn gói IPv4 qua WinDivert trước khi lưu lượng tới soc
    - Nhúng trực tiếp vào Win32 PE Resource của file `.exe`. Hiển thị icon 3D phát sáng sắc nét trong **Task Manager**, **Taskbar**, **Windows Explorer** và **Web SOC Dashboard**.
 
 5. **⚡ Tự Động Nhận Diện Kết Nối (Zero-Drop TCP Adoption)**:
-   - Mọi kết nối Remote Desktop (3389), Web (80, 443) hoặc Game khi gửi dữ liệu ứng dụng thực tế sẽ được đưa ngay vào danh sách tin cậy, đảm bảo không bao giờ bị rớt kết nối quản trị VPS.
+   - TCP được học thụ động trong PEACE; flow mở sẵn chỉ được nhận khi đúng tuple `remote IP + remote port + local port` đang ở trạng thái ESTABLISHED trong Windows. Không có port đặc biệt hay port bypass.
 
 6. **🔐 SYN Cookie Cryptographic (RFC 4987)**:
    - Xác thực TCP 3-way handshake bằng **HMAC-SHA256 stateless cookie** với khóa bí mật ngẫu nhiên.
@@ -133,7 +133,7 @@ waf-game.exe --service         # (Nội bộ) Chạy dưới dạng Windows Serv
 | :--- | :--- |
 | **Overview & Traffic** | Biểu đồ sóng thời gian thực 60 giây (RX Clean, TX Outbound, Blocked DDoS), thẻ KPI lưu lượng mạng 2 chiều, phân loại đòn tấn công. |
 | **Attack Radar** | Thống kê số lượng gói tin bị chặn bởi từng lớp: Subnet /24, UDP Amplification, Query DPI, Out-of-State, Entropy. |
-| **Presets & Tuning** | Kích hoạt 1 chạm 4 chế độ: Full-Stack Hybrid, Universal Game Shield, Web & API Shield, Maximum Lockdown. |
+| **Presets & Tuning** | Kích hoạt 1 chạm các chế độ The Isle, Hybrid, Game, Web và Emergency WAR an toàn cho RDP. |
 | **Access Control** | Quản lý danh sách cấm (Blacklist) và danh sách tin cậy (Whitelist), hỗ trợ thêm/xóa nhanh IP. |
 | **Port Inspector** | Danh sách toàn bộ các cổng TCP/UDP đang mở trên máy chủ và lớp khiên bảo vệ tương ứng. |
 | **Security Logs** | Luồng nhật ký sự kiện bảo mật trực tiếp theo thời gian thực (Live Event Stream). |
@@ -277,6 +277,7 @@ Khi phát hiện DDoS, hệ thống sẽ tự động gửi cảnh báo kèm th�
 - AUTO chỉ enforce khi vào WAR; ngưỡng mặc định là 15.000 PPS hoặc 50 MiB/s inbound.
 - Geo-IP tắt để giữ Steam/EOS, dịch vụ bên thứ ba và người chơi quốc tế.
 - Host firewall không thể xử lý cuộc tấn công đã bão hòa đường truyền 300 Mbps; cần ISP/scrubbing upstream cho volumetric DDoS.
+- Phiên TCP đã xác minh được giữ khi chuyển sang WAR bất kể dùng port nào. Nếu IP quản trị là IP tĩnh, vẫn nên thêm chính IP đó vào `whitelist_ips`; không đưa port public vào `exclude_ports` trừ tình huống cứu hộ vì port bị loại trừ sẽ không còn được lọc DDoS.
 
 - Giữ `allow_lan: false` nếu dashboard chỉ dùng qua RDP. Nếu bật LAN, **bắt buộc** đặt `username` và mật khẩu riêng mạnh ≥ 12 ký tự; chương trình sẽ từ chối bind LAN khi thiếu thông tin xác thực.
 - Thêm IP quản trị cố định vào `whitelist_ips`, nhưng không whitelist cả dải rộng.

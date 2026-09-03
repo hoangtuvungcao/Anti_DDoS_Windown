@@ -108,6 +108,23 @@ func TestShardedMap_Concurrency(t *testing.T) {
 	}
 }
 
+func TestShardedMap_EvictOldestWithCallback(t *testing.T) {
+	sm := NewShardedMap[int](100)
+	for i := uint64(0); i < 100; i++ {
+		sm.Set(i, int(i))
+	}
+	callbacks := int64(0)
+	removed := sm.EvictOldestWithCallback(10, func(key uint64, value int) {
+		callbacks++
+	})
+	if removed == 0 || callbacks != removed {
+		t.Fatalf("invalid eviction callback accounting: removed=%d callbacks=%d", removed, callbacks)
+	}
+	if sm.Count() > 10 || sm.Count() != 100-removed {
+		t.Fatalf("cache ceiling not enforced: count=%d removed=%d", sm.Count(), removed)
+	}
+}
+
 func TestFlowBucket_Limit(t *testing.T) {
 	// 10 PPS limit, 1000 BPS limit
 	fb := NewFlowBucket(10, 1000)

@@ -14,11 +14,6 @@ import (
 	"waf-game/pkg/windivert"
 )
 
-// IsManagementPort checks if a port is a critical remote administration port (RDP, SSH, WinRM, Web Dashboard).
-func IsManagementPort(port uint16) bool {
-	return port == 3389 || port == 22 || port == 5985 || port == 5986 || port == 8080
-}
-
 // TCPShield implements Layer 3: Robust Stateful TCP Shield.
 
 // Defends against SYN Floods, ACK Floods, RST/FIN Floods, Slowloris,
@@ -135,6 +130,87 @@ func (ts *TCPShield) SetStrict(val bool) {
 	ts.strict = val
 }
 
+// ObserveTCP learns TCP state without enforcing limits. PEACE/ELEVATED calls
+// this before reinjection so sessions that pre-date a switch to WAR remain
+// established instead of being misclassified as out-of-state. An unseen ACK is
+// adopted only when the Windows kernel confirms the exact connection tuple.
+func (ts *TCPShield) ObserveTCP(pkt *packet.Packet, kernelEstablished bool) {
+	if pkt == nil || pkt.Protocol != packet.ProtoTCP {
+		return
+	}
+	connKey := pkt.ConnKey()
+	if pkt.IsRST() || pkt.IsFIN() {
+		if _, exists := ts.verified.Get(connKey); exists {
+			ts.verified.Delete(connKey)
+			ts.decrementConnectionCounters(pkt.IPFlowKey(), uint64(pkt.SrcIPUint32()>>8))
+		}
+		return
+	}
+
+	now := time.Now().UnixNano()
+	if pkt.IsSYN() && !pkt.IsSYNACK() {
+		_, existed := ts.verified.Get(connKey)
+		ts.verified.Set(connKey, TCPConnState{
+			VerifiedAt:   now,
+			LastActivity: now,
+			IsHalfOpen:   true,
+		})
+		if !existed {
+			ts.incrementConnectionCounters(pkt.IPFlowKey(), uint64(pkt.SrcIPUint32()>>8))
+		}
+		return
+	}
+	if !pkt.IsACK() && !pkt.IsSYNACK() {
+		return
+	}
+
+	entry, exists := ts.verified.Get(connKey)
+	if !exists && !kernelEstablished {
+		// Never teach arbitrary out-of-state ACK floods as trusted traffic. Only
+		// flows confirmed by Windows may predate shield startup.
+		return
+	}
+	state := TCPConnState{
+		VerifiedAt:       now,
+		HandshakeAt:      now,
+		LastActivity:     now,
+		BytesTransferred: uint64(pkt.PayloadLen),
+		HasPayload:       pkt.PayloadLen > 0,
+	}
+	if exists {
+		state = entry.Value
+		state.LastActivity = now
+		state.IsHalfOpen = false
+		if state.HandshakeAt == 0 {
+			state.HandshakeAt = now
+		}
+		if pkt.PayloadLen > 0 {
+			state.HasPayload = true
+			state.BytesTransferred += uint64(pkt.PayloadLen)
+		}
+	}
+	ts.verified.Set(connKey, state)
+	if !exists {
+		ts.incrementConnectionCounters(pkt.IPFlowKey(), uint64(pkt.SrcIPUint32()>>8))
+	}
+}
+
+func (ts *TCPShield) incrementConnectionCounters(ipKey, subnetKey uint64) {
+	connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() int32 { return 0 })
+	ts.connPerIP.Set(ipKey, connEntry.Value+1)
+	subnetEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() int32 { return 0 })
+	ts.connPerSubnet.Set(subnetKey, subnetEntry.Value+1)
+}
+
+func (ts *TCPShield) decrementConnectionCounters(ipKey, subnetKey uint64) {
+	if count, ok := ts.connPerIP.Get(ipKey); ok && count.Value > 0 {
+		ts.connPerIP.Set(ipKey, count.Value-1)
+	}
+	if count, ok := ts.connPerSubnet.Get(subnetKey); ok && count.Value > 0 {
+		ts.connPerSubnet.Set(subnetKey, count.Value-1)
+	}
+}
+
 // ProcessTCP handles a TCP packet through connection tracking and rate limiting.
 func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windivert.Address) FilterResult {
 	ts.mu.RLock()
@@ -150,6 +226,39 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 	ipKey := pkt.IPFlowKey()
 	subnetKey := uint64(pkt.SrcIPUint32() >> 8)
 	now := time.Now().UnixNano()
+	// Invalid combinations are rejected even if an attacker guesses an existing
+	// tuple. Normal established TCP never emits these flag combinations.
+	if (pkt.IsSYN() && pkt.IsFIN()) || (pkt.IsSYN() && pkt.IsRST()) {
+		return FilterDrop
+	}
+
+	// Established traffic always wins over dynamic flood blacklists. Windows
+	// still validates TCP sequence/state after reinjection, while the shield keeps
+	// rate-limiting new SYNs from the same address.
+	if entry, ok := ts.verified.Get(connKey); ok {
+		state := entry.Value
+		if pkt.IsRST() || pkt.IsFIN() {
+			ts.verified.Delete(connKey)
+			if count, found := ts.connPerIP.Get(ipKey); found && count.Value > 0 {
+				ts.connPerIP.Set(ipKey, count.Value-1)
+			}
+			if count, found := ts.connPerSubnet.Get(subnetKey); found && count.Value > 0 {
+				ts.connPerSubnet.Set(subnetKey, count.Value-1)
+			}
+			return FilterPass
+		}
+		state.LastActivity = now
+		if state.IsHalfOpen && pkt.IsACK() {
+			state.IsHalfOpen = false
+			state.HandshakeAt = now
+		}
+		if pkt.PayloadLen > 0 {
+			state.HasPayload = true
+			state.BytesTransferred += uint64(pkt.PayloadLen)
+		}
+		ts.verified.Set(connKey, state)
+		return FilterPass
+	}
 
 	// 1. Fast check: is this IP already blacklisted?
 	if entry, ok := ts.synBuckets.Get(ipKey); ok {
@@ -163,28 +272,8 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		}
 	}
 
-	// 2. Drop TCP packets with invalid flag combinations
-	if (pkt.IsSYN() && pkt.IsFIN()) || (pkt.IsSYN() && pkt.IsRST()) {
-		return FilterDrop
-	}
-
-	// 3. Handle RST/FIN packets (Teardown)
+	// 3. Handle untracked RST/FIN packets.
 	if pkt.IsRST() || pkt.IsFIN() {
-		if _, ok := ts.verified.Get(connKey); ok {
-			ts.verified.Delete(connKey)
-			// Bug fix: entry.Value-- is a data race — multiple workers can mutate simultaneously.
-			// Use shard-locked decrement via Set() to ensure safety.
-			if entry, ok := ts.connPerIP.Get(ipKey); ok && entry.Value > 0 {
-				newVal := entry.Value - 1
-				ts.connPerIP.Set(ipKey, newVal)
-			}
-			if entry, ok := ts.connPerSubnet.Get(subnetKey); ok && entry.Value > 0 {
-				newVal := entry.Value - 1
-				ts.connPerSubnet.Set(subnetKey, newVal)
-			}
-			return FilterPass
-		}
-
 		// Unsolicited RST/FIN packet (not belonging to any tracked connection)
 		bucket, _ := ts.outOfStateBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
 			return datastore.NewIPBucket(30)
@@ -268,25 +357,6 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		return FilterPass
 	}
 
-	// 5. Handle Established Connection Packets (ACK, PSH-ACK, Data)
-	if entry, ok := ts.verified.Get(connKey); ok {
-		state := &entry.Value
-		state.LastActivity = now
-		entry.LastSeen = now
-
-		// If this was half-open, client ACK completes the 3-way handshake
-		if state.IsHalfOpen && pkt.IsACK() {
-			state.IsHalfOpen = false
-			state.HandshakeAt = now
-		}
-
-		if pkt.PayloadLen > 0 {
-			state.HasPayload = true
-			state.BytesTransferred += uint64(pkt.PayloadLen)
-		}
-		return FilterPass
-	}
-
 	// 6. Out-of-State Packet Handling (Unverified Connection Scrubber)
 
 	// Check if this ACK contains a valid Cryptographic SYN Cookie response (RFC 4987)
@@ -361,11 +431,6 @@ func (ts *TCPShield) ReapIdleConnections() int64 {
 	ts.mu.RUnlock()
 	idleCutoff := time.Duration(idleTimeoutSec) * time.Second
 	return ts.verified.SweepWithCallback(idleCutoff, func(key uint64, state TCPConnState) {
-		srcPort := uint16((key >> 16) & 0xFFFF)
-		dstPort := uint16(key & 0xFFFF)
-		if IsManagementPort(dstPort) || IsManagementPort(srcPort) {
-			return // Never kill idle management sessions (RDP/SSH/UltraViewer)
-		}
 		ipVal := uint32(key >> 32)
 		ipKey := uint64(ipVal)
 		subnetKey := uint64(ipVal >> 8)
@@ -390,11 +455,6 @@ func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 
 	var toDelete []uint64
 	ts.verified.ForEach(func(key uint64, entry *datastore.Entry[TCPConnState]) bool {
-		srcPort := uint16((key >> 16) & 0xFFFF)
-		dstPort := uint16(key & 0xFFFF)
-		if IsManagementPort(dstPort) || IsManagementPort(srcPort) {
-			return true // Never reap management sessions
-		}
 		state := entry.Value
 		if state.IsHalfOpen && state.VerifiedAt < halfOpenCutoff {
 			toDelete = append(toDelete, key)
@@ -431,11 +491,6 @@ func (ts *TCPShield) ReapSlowlorisConnections() int64 {
 
 	var toDelete []uint64
 	ts.verified.ForEach(func(key uint64, entry *datastore.Entry[TCPConnState]) bool {
-		srcPort := uint16((key >> 16) & 0xFFFF)
-		dstPort := uint16(key & 0xFFFF)
-		if IsManagementPort(dstPort) || IsManagementPort(srcPort) {
-			return true // Never kill management sessions (RDP/SSH/UltraViewer)
-		}
 		state := entry.Value
 		// Established connection older than threshold with less than 64 bytes transferred
 		if !state.IsHalfOpen && state.HandshakeAt > 0 && state.HandshakeAt < slowlorisCutoff && state.BytesTransferred < 64 {
@@ -522,6 +577,29 @@ func (ts *TCPShield) IsVerified(connKey uint64) bool {
 // GetVerifiedCount returns the number of tracked TCP connections.
 func (ts *TCPShield) GetVerifiedCount() int64 {
 	return ts.verified.Count()
+}
+
+// EnforceCapacity applies the configured aggregate cache ceiling across TCP
+// connection and flood-accounting state stores.
+func (ts *TCPShield) EnforceCapacity(maxEntries int) int64 {
+	if maxEntries < 1000 {
+		maxEntries = 1000
+	}
+	var removed int64
+	removed += ts.verified.EvictOldestWithCallback(maxEntries/2, func(key uint64, state TCPConnState) {
+		ipKey := uint64(uint32(key >> 32))
+		subnetKey := uint64(uint32(key>>32) >> 8)
+		ts.decrementConnectionCounters(ipKey, subnetKey)
+	})
+	perAuxiliary := maxEntries / 14
+	removed += ts.connPerIP.EvictOldest(perAuxiliary)
+	removed += ts.connPerSubnet.EvictOldest(perAuxiliary)
+	removed += ts.synBuckets.EvictOldest(perAuxiliary)
+	removed += ts.synSubnetBuckets.EvictOldest(perAuxiliary)
+	removed += ts.connRatePerIP.EvictOldest(perAuxiliary)
+	removed += ts.outOfStateBuckets.EvictOldest(perAuxiliary)
+	removed += ts.verifiedClients.EvictOldest(perAuxiliary)
+	return removed
 }
 
 // GetBlacklist returns a list of blacklisted IPs from TCP rate limiters.

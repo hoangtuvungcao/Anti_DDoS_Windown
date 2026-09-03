@@ -11,8 +11,9 @@ import (
 
 // PortSet is a read-only snapshot of listening ports on the system.
 type PortSet struct {
-	TCP map[uint16]bool
-	UDP map[uint16]bool
+	TCP            map[uint16]bool
+	UDP            map[uint16]bool
+	EstablishedTCP map[uint64]bool
 }
 
 // PortDiscovery periodically scans the OS for listening TCP/UDP ports.
@@ -26,8 +27,11 @@ type PortDiscovery struct {
 
 // Windows API constants
 const (
-	tcpTableOwnerPIDListener = 3  // TCP_TABLE_OWNER_PID_LISTENER
-	udpTableOwnerPID         = 1  // UDP_TABLE_OWNER_PID
+	tcpTableOwnerPIDListener = 3 // TCP_TABLE_OWNER_PID_LISTENER (IPv6 scan)
+	tcpTableOwnerPIDAll      = 5 // TCP_TABLE_OWNER_PID_ALL
+	udpTableOwnerPID         = 1 // UDP_TABLE_OWNER_PID
+	mibTCPStateListen        = 2
+	mibTCPStateEstablished   = 5
 	afINET                   = 2  // AF_INET (IPv4)
 	afINET6                  = 23 // AF_INET6 (IPv6 / Dual-Stack sockets like [::]:8080)
 )
@@ -101,7 +105,7 @@ func (pd *PortDiscovery) GetPorts() *PortSet {
 
 // IsListening checks if a port is being listened on for the given protocol.
 func (pd *PortDiscovery) IsListening(port uint16, isTCP bool) bool {
-	if pd.IsExcluded(port) || IsManagementPort(port) {
+	if pd.IsExcluded(port) {
 		return true
 	}
 	ports := pd.current.Load()
@@ -112,6 +116,13 @@ func (pd *PortDiscovery) IsListening(port uint16, isTCP bool) bool {
 		return ports.TCP[port]
 	}
 	return ports.UDP[port]
+}
+
+// IsEstablishedTCP verifies a complete remote-IP/remote-port/local-port tuple
+// against Windows' live TCP connection table. It does not trust port numbers.
+func (pd *PortDiscovery) IsEstablishedTCP(connKey uint64) bool {
+	ports := pd.current.Load()
+	return ports != nil && ports.EstablishedTCP[connKey]
 }
 
 // IsExcluded reports whether a port bypasses closed-port filtering.
@@ -146,8 +157,9 @@ func (pd *PortDiscovery) loop() {
 
 func (pd *PortDiscovery) scan() *PortSet {
 	ps := &PortSet{
-		TCP: make(map[uint16]bool),
-		UDP: make(map[uint16]bool),
+		TCP:            make(map[uint16]bool),
+		UDP:            make(map[uint16]bool),
+		EstablishedTCP: make(map[uint64]bool),
 	}
 
 	// Scan both IPv4 and IPv6 / Dual-stack listeners
@@ -166,13 +178,13 @@ func decodePort(raw uint32) uint16 {
 
 func (pd *PortDiscovery) scanTCP4(ps *PortSet) {
 	var size uint32
-	procGetExtendedTcpTab.Call(0, uintptr(unsafe.Pointer(&size)), 1, afINET, tcpTableOwnerPIDListener, 0)
+	procGetExtendedTcpTab.Call(0, uintptr(unsafe.Pointer(&size)), 1, afINET, tcpTableOwnerPIDAll, 0)
 	if size == 0 {
 		return
 	}
 
 	buf := make([]byte, size)
-	ret, _, _ := procGetExtendedTcpTab.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)), 1, afINET, tcpTableOwnerPIDListener, 0)
+	ret, _, _ := procGetExtendedTcpTab.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)), 1, afINET, tcpTableOwnerPIDAll, 0)
 	if ret != 0 || len(buf) < 4 {
 		return
 	}
@@ -186,9 +198,13 @@ func (pd *PortDiscovery) scanTCP4(ps *PortSet) {
 			break
 		}
 		row := (*tcpRowOwnerPID)(unsafe.Pointer(&buf[offset]))
-		port := decodePort(row.LocalPort)
-		if port > 0 && !pd.exclude[port] {
-			ps.TCP[port] = true
+		localPort := decodePort(row.LocalPort)
+		if row.State == mibTCPStateListen && localPort > 0 && !pd.exclude[localPort] {
+			ps.TCP[localPort] = true
+		}
+		if row.State == mibTCPStateEstablished && localPort > 0 {
+			key := tcpTableConnectionKey(row.RemoteAddr, row.RemotePort, row.LocalPort)
+			ps.EstablishedTCP[key] = true
 		}
 	}
 }

@@ -87,6 +87,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	us.mu.RLock()
 	flowPPS, flowBPS := us.flowPPS, us.flowBPS
 	ipPPS, subnetPPS := us.ipPPS, us.subnetPPS
+	blacklistDur := us.blacklistDur
 	dpiEnabled, entropyCheck := us.dpiEnabled, us.entropyCheck
 	twowayEnabled := us.twowayEnabled
 	strict := us.strict
@@ -159,7 +160,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	if !flowEntry.Value.Allow(pktSize) {
 		// Only blacklist under active War Mode attack with 150+ continuous flood violations
 		if strict && flowEntry.Value.ViolationCount() >= 150 {
-			flowEntry.Value.Blacklist(30 * time.Second)
+			flowEntry.Value.Blacklist(blacklistDur)
 		}
 		return FilterDrop, DropFlowRate
 	}
@@ -171,7 +172,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 
 	if !ipEntry.Value.Allow() {
 		if strict && ipEntry.Value.ViolationCount() >= 200 {
-			ipEntry.Value.Blacklist(30 * time.Second)
+			ipEntry.Value.Blacklist(blacklistDur)
 		}
 		return FilterDrop, DropIPRate
 	}
@@ -183,7 +184,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 
 	if !subnetEntry.Value.Allow() {
 		if strict && subnetEntry.Value.ViolationCount() >= 500 {
-			subnetEntry.Value.Blacklist(30 * time.Second)
+			subnetEntry.Value.Blacklist(blacklistDur)
 		}
 		return FilterDrop, DropSubnetRate
 	}
@@ -365,6 +366,23 @@ func (us *UDPShield) SweepFlows(ttl time.Duration) (flowsRemoved, ipsRemoved, ou
 		_ = us.GameShield.Sweep(ttl)
 	}
 	return
+}
+
+// EnforceCapacity applies the configured aggregate cache ceiling across UDP
+// flow, IP, subnet and two-way state stores.
+func (us *UDPShield) EnforceCapacity(maxEntries int) int64 {
+	if maxEntries < 1000 {
+		maxEntries = 1000
+	}
+	var removed int64
+	removed += us.flowBuckets.EvictOldest(maxEntries * 45 / 100)
+	removed += us.ipBuckets.EvictOldest(maxEntries * 15 / 100)
+	removed += us.subnetBuckets.EvictOldest(maxEntries * 15 / 100)
+	removed += us.outboundSeen.EvictOldest(maxEntries * 15 / 100)
+	if us.GameShield != nil {
+		removed += us.GameShield.EnforceCapacity(maxEntries / 10)
+	}
+	return removed
 }
 
 // GetBlacklistedCount returns approximate count of blacklisted flows.

@@ -44,6 +44,7 @@ type Engine struct {
 	geoIPMode           atomic.Int32
 	entropyMode         atomic.Int32
 	advancedEnforcement atomic.Bool
+	strictWhitelist     bool
 	modeManager         *ModeManager
 	geoIP               *GeoIP
 	autoDefense         *AutoDefense
@@ -67,9 +68,12 @@ type Engine struct {
 
 // EngineConfig holds engine configuration
 type EngineConfig struct {
-	Workers           int
-	DiscoveryInterval time.Duration
-	ExcludePorts      []uint16
+	Workers            int
+	DiscoveryInterval  time.Duration
+	ExcludePorts       []uint16
+	CacheMaxEntries    int
+	CacheTTL           time.Duration
+	CacheSweepInterval time.Duration
 
 	// Peace mode settings
 	UDPFlowPPS                float64
@@ -97,10 +101,11 @@ type EngineConfig struct {
 	WarEnableDPI  bool
 
 	// Features
-	EntropyMode  int
-	TwoWayVerify bool
-	GeoIPMode    int
-	SystemMode   string
+	EntropyMode     int
+	TwoWayVerify    bool
+	GeoIPMode       int
+	SystemMode      string
+	StrictWhitelist bool
 
 	// Lists & Rules
 	WhitelistIPs []string
@@ -116,6 +121,9 @@ func DefaultConfig() EngineConfig {
 	return EngineConfig{
 		Workers:                   0, // Auto CPU
 		DiscoveryInterval:         5 * time.Second,
+		CacheMaxEntries:           300000,
+		CacheTTL:                  30 * time.Second,
+		CacheSweepInterval:        10 * time.Second,
 		UDPFlowPPS:                150,
 		UDPFlowBPS:                2097152, // 2 MB/s
 		UDPPerIPPPS:               500,
@@ -141,6 +149,7 @@ func DefaultConfig() EngineConfig {
 		TwoWayVerify:              true,
 		GeoIPMode:                 GeoIPModeAuto,
 		SystemMode:                "AUTO",
+		StrictWhitelist:           true,
 		WhitelistIPs:              []string{"127.0.0.1"},
 	}
 }
@@ -224,10 +233,11 @@ func NewEngine(cfg EngineConfig, metrics *stats.Metrics, fastLog *logger.FastLog
 				return &b
 			},
 		},
-		stopCh:     make(chan struct{}),
-		workers:    workers,
-		running:    false,
-		fastLogger: fastLog,
+		stopCh:          make(chan struct{}),
+		workers:         workers,
+		running:         false,
+		fastLogger:      fastLog,
+		strictWhitelist: cfg.StrictWhitelist,
 	}
 	engine.geoIPMode.Store(int32(cfg.GeoIPMode))
 	engine.entropyMode.Store(int32(cfg.EntropyMode))
@@ -378,13 +388,27 @@ func (e *Engine) worker(id int) {
 		action := e.ipFilter.Check(pkt.SrcIP)
 		if action == ActionWhitelist {
 			e.metrics.WhitelistHits.Add(1)
-			e.inboundHandle.Send(buf[:n], &addr)
-			continue
+			if e.strictWhitelist {
+				e.inboundHandle.Send(buf[:n], &addr)
+				continue
+			}
 		} else if action == ActionBlacklist {
 			e.metrics.Layer0Drops.Add(1)
 			e.metrics.DroppedPPS.Add(1)
 			e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
 			continue
+		}
+
+		// Explicit operator exclusions bypass all heuristic/Geo/rate filters while
+		// static blacklist rules above still take precedence.
+		if e.discovery.IsExcluded(pkt.DstPort) {
+			e.inboundHandle.Send(buf[:n], &addr)
+			continue
+		}
+		// Adopt only connections that Windows itself reports as ESTABLISHED. This
+		// preserves sessions opened before the shield without any port-based bypass.
+		if pkt.Protocol == packet.ProtoTCP && pkt.IsACK() && e.discovery.IsEstablishedTCP(pkt.ConnKey()) {
+			e.tcpShield.ObserveTCP(&pkt, true)
 		}
 
 		// ═══ GEOIP COUNTRY FILTER (O(log N) Binary Search) ═══
@@ -425,6 +449,9 @@ func (e *Engine) worker(id int) {
 		// Peace/Elevated monitor-only mode preserves game discovery, RCON,
 		// third-party control panels, VoIP and remote administration traffic.
 		if !e.advancedEnforcement.Load() {
+			if pkt.Protocol == packet.ProtoTCP {
+				e.tcpShield.ObserveTCP(&pkt, e.discovery.IsEstablishedTCP(pkt.ConnKey()))
+			}
 			e.inboundHandle.Send(buf[:n], &addr)
 			continue
 		}
@@ -549,7 +576,19 @@ func (e *Engine) outboundTracker() {
 func (e *Engine) sweeper() {
 	defer e.wg.Done()
 
-	ticker := time.NewTicker(10 * time.Second)
+	e.cfgMu.RLock()
+	sweepInterval, cacheTTL, cacheMaxEntries := e.cfg.CacheSweepInterval, e.cfg.CacheTTL, e.cfg.CacheMaxEntries
+	e.cfgMu.RUnlock()
+	if sweepInterval <= 0 {
+		sweepInterval = 10 * time.Second
+	}
+	if cacheTTL <= 0 {
+		cacheTTL = 30 * time.Second
+	}
+	if cacheMaxEntries <= 0 {
+		cacheMaxEntries = 300000
+	}
+	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
 
 	tcpReapTicker := time.NewTicker(2 * time.Second)
@@ -561,7 +600,9 @@ func (e *Engine) sweeper() {
 	for {
 		select {
 		case <-ticker.C:
-			e.udpShield.SweepFlows(30 * time.Second)
+			e.udpShield.SweepFlows(cacheTTL)
+			e.udpShield.EnforceCapacity(cacheMaxEntries)
+			e.tcpShield.EnforceCapacity(cacheMaxEntries)
 
 		case <-tcpReapTicker.C:
 			e.tcpShield.ReapIdleConnections()

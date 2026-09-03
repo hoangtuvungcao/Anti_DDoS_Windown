@@ -112,7 +112,7 @@ func (m *ModeManager) applyMode(isWar bool) {
 			m.eng.advancedEnforcement.Store(true)
 			// ON: maximum protection
 			udpShield.SetDPI(cfg.WarEnableDPI)
-			udpShield.SetEntropy(true)
+			udpShield.SetEntropy(int(m.eng.entropyMode.Load()) != EntropyModeOff)
 			udpShield.SetTwoWay(cfg.TwoWayVerify)
 			if udpShield.GameShield != nil {
 				udpShield.GameShield.SetEnabled(true)

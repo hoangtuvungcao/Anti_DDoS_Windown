@@ -1,12 +1,106 @@
 package engine
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"waf-game/pkg/datastore"
 	"waf-game/pkg/packet"
 	"waf-game/pkg/windivert"
 )
+
+func TestTCPShield_KernelEstablishedConnectionSurvivesStrictMode(t *testing.T) {
+	ts := NewTCPShield(nil, 150, 60, 500, 1)
+	rdp := &packet.Packet{
+		Version:    4,
+		IHL:        5,
+		TotalLen:   80,
+		Protocol:   packet.ProtoTCP,
+		SrcIP:      [4]byte{203, 0, 113, 25},
+		DstIP:      [4]byte{192, 0, 2, 2},
+		SrcPort:    53000,
+		DstPort:    45678, // Deliberately non-standard: no port-based trust.
+		TCPFlags:   packet.TCPFlagACK | packet.TCPFlagPSH,
+		PayloadLen: 40,
+	}
+
+	// Simulate any connection that Windows confirms was already established.
+	ts.ObserveTCP(rdp, true)
+	entry, ok := ts.verified.Get(rdp.ConnKey())
+	if !ok {
+		t.Fatal("monitoring must learn a kernel-established connection")
+	}
+	atomic.StoreInt64(&entry.LastSeen, time.Now().Add(-5*time.Second).UnixNano())
+	if removed := ts.ReapIdleConnections(); removed != 1 {
+		t.Fatalf("idle sweep did not clean stale state: removed=%d", removed)
+	}
+	// The engine consults Windows before filtering and safely re-adopts it.
+	ts.ObserveTCP(rdp, true)
+
+	// A dynamic SYN-flood blacklist must affect new traffic, not tear down the
+	// already verified administrator session.
+	ipKey := rdp.IPFlowKey()
+	bucket, _ := ts.synBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+		return datastore.NewIPBucket(1)
+	})
+	bucket.Value.Blacklist(time.Minute)
+	ts.SetStrict(true)
+	if got := ts.ProcessTCP(rdp, nil, &windivert.Address{}); got != FilterPass {
+		t.Fatalf("verified connection was dropped in strict mode: %v", got)
+	}
+
+	newRDP := *rdp
+	newRDP.SrcPort++
+	newRDP.TCPFlags = packet.TCPFlagSYN
+	newRDP.PayloadLen = 0
+	if got := ts.ProcessTCP(&newRDP, nil, &windivert.Address{}); got != FilterDrop {
+		t.Fatalf("new SYN from blacklisted attacker must still be dropped: %v", got)
+	}
+}
+
+func TestTCPShield_MonitorDoesNotTrustUnsolicitedACKFlood(t *testing.T) {
+	ts := NewTCPShield(nil, 150, 60, 500, 90)
+	ack := &packet.Packet{
+		Version:  4,
+		IHL:      5,
+		TotalLen: 40,
+		Protocol: packet.ProtoTCP,
+		SrcIP:    [4]byte{198, 51, 100, 99},
+		DstIP:    [4]byte{192, 0, 2, 2},
+		SrcPort:  54000,
+		DstPort:  7777,
+		TCPFlags: packet.TCPFlagACK,
+	}
+	ts.ObserveTCP(ack, false)
+	if ts.IsVerified(ack.ConnKey()) {
+		t.Fatal("monitoring trusted an unsolicited non-management ACK")
+	}
+	ts.SetStrict(true)
+	if got := ts.ProcessTCP(ack, nil, &windivert.Address{}); got != FilterDrop {
+		t.Fatalf("strict mode must drop an unsolicited ACK flood: %v", got)
+	}
+}
+
+func TestTCPShield_HalfOpenStillExpires(t *testing.T) {
+	ts := NewTCPShield(nil, 150, 60, 500, 90)
+	syn := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 40, Protocol: packet.ProtoTCP,
+		SrcIP: [4]byte{198, 51, 100, 10}, DstIP: [4]byte{192, 0, 2, 2},
+		SrcPort: 55000, DstPort: 45678, TCPFlags: packet.TCPFlagSYN,
+	}
+	ts.ObserveTCP(syn, false)
+	entry, ok := ts.verified.Get(syn.ConnKey())
+	if !ok {
+		t.Fatal("expected SYN to be tracked")
+	}
+	state := entry.Value
+	state.VerifiedAt = time.Now().Add(-time.Minute).UnixNano()
+	ts.verified.Set(syn.ConnKey(), state)
+	if removed := ts.ReapHalfOpenAndZeroPayload(); removed != 1 {
+		t.Fatalf("SYN flood entry was retained: removed=%d", removed)
+	}
+}
 
 func TestTCPShield_BasicTraffic(t *testing.T) {
 	// TCP Shield with max 2 connections per IP, 10 rate, 10 subnet, 5s idle timeout

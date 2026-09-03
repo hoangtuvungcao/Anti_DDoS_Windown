@@ -62,3 +62,19 @@ func TestGameShield_SAMPQueryLimiting(t *testing.T) {
 		t.Errorf("Expected 31st SAMP query to be dropped, got %v", res)
 	}
 }
+
+func TestGameShield_CustomPortRuleWithoutSignatureLimitsAllPayloads(t *testing.T) {
+	gs := NewGameShield([]CustomGameRule{{Port: 9000, Protocol: "UDP", AllowPPS: 2}})
+	pkt := &packet.Packet{
+		Protocol: packet.ProtoUDP,
+		SrcIP:    [4]byte{192, 0, 2, 10}, SrcPort: 50000, DstPort: 9000,
+	}
+	for i := 0; i < 2; i++ {
+		if got := gs.CheckGamePacket(pkt, []byte("valid-game-payload")); got != FilterPass {
+			t.Fatalf("custom rule dropped packet %d too early: %v", i, got)
+		}
+	}
+	if got := gs.CheckGamePacket(pkt, []byte("valid-game-payload")); got != FilterDrop {
+		t.Fatalf("custom rule did not enforce allow_pps: %v", got)
+	}
+}

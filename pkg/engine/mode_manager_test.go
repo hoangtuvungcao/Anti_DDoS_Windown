@@ -35,6 +35,9 @@ func TestMonitorOnlyPeaceEnforcesOnlyAfterWar(t *testing.T) {
 	if !eng.IsAdvancedEnforcementEnabled() {
 		t.Fatal("WAR mode must enable advanced enforcement")
 	}
+	if eng.udpShield.IsEntropyEnabled() {
+		t.Fatal("forced WAR ignored entropy_mode=OFF")
+	}
 
 	eng.ConfigurePeaceUDP(700, 6*1024*1024, 1800, 6000, false, true)
 	eng.modeManager.SetMode(ModeAuto)

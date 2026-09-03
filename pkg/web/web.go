@@ -428,11 +428,13 @@ func (s *Server) handleAPIPreset(w http.ResponseWriter, r *http.Request) {
 		s.engine.GetModeManager().SetMode(engine.ModeAuto)
 		msg = "Applied Preset: 🌐 High-Concurrency Web & API Shield (Stateful SYN limiting, 200 Conns/Subnet)"
 	case "STRICT":
+		// Keep international players and remote administration reachable. Strict
+		// enforcement still activates configured WAR limits, two-way verification,
+		// TCP state tracking, DPI, entropy and botnet/subnet mitigation.
+		s.engine.SetGeoIPMode(engine.GeoIPModeOff)
 		s.engine.GetModeManager().SetMode(engine.ModeOn)
-		s.engine.SetGeoIPMode(engine.GeoIPModeOn)
-		udpShield.SetRateLimits(35, 524288, 80, 200)
 		udpShield.SetDPI(true)
-		msg = "Applied Preset: ⚔️ Maximum Lockdown Defense (Strict War Mode + Geo-IP VN Only)"
+		msg = "Applied Preset: ⚔️ Emergency WAR Defense (stateful RDP-safe, international traffic preserved)"
 	default:
 		http.Error(w, "Invalid preset", http.StatusBadRequest)
 		return
@@ -1062,12 +1064,12 @@ const embeddedHTML = `<!DOCTYPE html>
                 <div class="preset-card" id="cardPresetStrict">
                     <div>
                         <div class="preset-title" style="display:flex; justify-content:space-between; align-items:center;">
-                            <span>Maximum Lockdown Defense (Strict War Mode)</span>
+                            <span>Emergency WAR Defense (RDP-safe)</span>
                             <span id="tagPresetStrict" class="nav-badge badge-war" style="display:none; font-size:10px;">ACTIVE</span>
                         </div>
-                        <div class="preset-desc">Chế độ phòng thủ nghiêm ngặt 24/7. Tự động bật bảo vệ Geo-IP chỉ cho phép Việt Nam và kích hoạt toàn bộ bộ lọc DPI.</div>
+                        <div class="preset-desc">Bật toàn bộ lớp chống botnet nhưng giữ phiên TCP/RDP đã xác minh, không khóa Geo-IP và dùng giới hạn WAR an toàn cho người chơi.</div>
                     </div>
-                    <button class="btn btn-danger" id="btnPresetStrict" onclick="applyPreset('STRICT')">Khóa Chặt Máy Chủ</button>
+                    <button class="btn btn-danger" id="btnPresetStrict" onclick="applyPreset('STRICT')">Bật WAR An Toàn</button>
                 </div>
             </div>
         </section>
@@ -1388,7 +1390,7 @@ const embeddedHTML = `<!DOCTYPE html>
             if (btnTheIsle) { btnTheIsle.className = 'btn btn-primary'; btnTheIsle.innerText = 'Kích Hoạt Profile Evrima'; }
             if (btnGame) { btnGame.className = 'btn btn-primary'; btnGame.innerText = 'Kích Hoạt Game Shield'; }
             if (btnWeb) { btnWeb.className = 'btn btn-primary'; btnWeb.innerText = 'Kích Hoạt Web Shield'; }
-            if (btnStrict) { btnStrict.className = 'btn btn-danger'; btnStrict.innerText = 'Khóa Chặt Máy Chủ'; }
+            if (btnStrict) { btnStrict.className = 'btn btn-danger'; btnStrict.innerText = 'Bật WAR An Toàn'; }
 
             if (tagHybrid) tagHybrid.style.display = 'none';
             if (tagTheIsle) tagTheIsle.style.display = 'none';
@@ -1418,9 +1420,9 @@ const embeddedHTML = `<!DOCTYPE html>
                 if (badge) { badge.className = 'nav-badge badge-peace'; badge.innerText = 'ACTIVE: 🌐 WEB SHIELD'; }
             } else if (activePreset === 'STRICT') {
                 if (cardStrict) { cardStrict.style.border = '2px solid var(--red)'; cardStrict.style.boxShadow = '0 0 18px var(--red-glow)'; }
-                if (btnStrict) { btnStrict.className = 'btn btn-danger btn-active'; btnStrict.innerText = '✓ ĐANG KHÓA CHẶT 24/7'; }
+                if (btnStrict) { btnStrict.className = 'btn btn-danger btn-active'; btnStrict.innerText = '✓ WAR ĐANG ENFORCE'; }
                 if (tagStrict) tagStrict.style.display = 'inline-block';
-                if (badge) { badge.className = 'nav-badge badge-war'; badge.innerText = 'ACTIVE: ⚔️ STRICT LOCKDOWN'; }
+                if (badge) { badge.className = 'nav-badge badge-war'; badge.innerText = 'ACTIVE: ⚔️ EMERGENCY WAR'; }
             }
         }
 

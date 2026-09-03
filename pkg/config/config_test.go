@@ -88,6 +88,12 @@ func TestToEngineConfig(t *testing.T) {
 	if len(engCfg.ExcludePorts) != 2 || engCfg.ExcludePorts[0] != 80 || engCfg.ExcludePorts[1] != 443 {
 		t.Errorf("Exclude ports mismatch: %v", engCfg.ExcludePorts)
 	}
+	if engCfg.CacheMaxEntries != cfg.Cache.MaxEntries || engCfg.CacheTTL != time.Duration(cfg.Cache.TTLSec)*time.Second {
+		t.Errorf("cache settings were not passed to engine: %+v", engCfg)
+	}
+	if !engCfg.StrictWhitelist {
+		t.Error("strict_whitelist was not passed to engine")
+	}
 }
 
 func TestLoad_WithVietnameseComments(t *testing.T) {
@@ -129,6 +135,9 @@ func TestLoad_WithVietnameseComments(t *testing.T) {
 	}
 	if !cfg.PeaceMode.MonitorOnly {
 		t.Error("legacy config without monitor_only must migrate to safe monitoring mode")
+	}
+	if !cfg.WarMode.StrictWhitelist {
+		t.Error("legacy config without strict_whitelist must preserve whitelist bypass behavior")
 	}
 }
 

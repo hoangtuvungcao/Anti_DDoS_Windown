@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	version    = "3.4.0"
+	version    = "3.4.1"
 	configFile = "config.json"
 )
 

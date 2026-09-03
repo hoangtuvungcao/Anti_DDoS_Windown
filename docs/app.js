@@ -284,36 +284,38 @@ function updateGeneratedConfig() {
     const geoMode = document.getElementById('cfgGeoMode') ? document.getElementById('cfgGeoMode').value : 'AUTO';
 
     const isTheIsle = preset === 'THE_ISLE';
-    const effectiveFlowPPS = isTheIsle ? Math.max(flowPPS, 500) : flowPPS;
+    const isStrict = preset === 'STRICT';
+    const isGameSafe = isTheIsle || isStrict;
+    const effectiveFlowPPS = isGameSafe ? Math.max(flowPPS, 500) : flowPPS;
     const configObj = {
-        "system_mode": "AUTO",
+        "system_mode": isStrict ? "WAR" : "AUTO",
         "peace_mode": {
             "monitor_only": true,
             "udp_pps_per_flow": effectiveFlowPPS,
-            "udp_bps_per_flow": isTheIsle ? 5242880 : 1048576,
-            "udp_pps_per_ip": isTheIsle ? 1500 : effectiveFlowPPS * 3,
-            "subnet_pps_limit": isTheIsle ? 5000 : effectiveFlowPPS * 10,
+            "udp_bps_per_flow": isGameSafe ? 5242880 : 1048576,
+            "udp_pps_per_ip": isGameSafe ? 1500 : effectiveFlowPPS * 3,
+            "subnet_pps_limit": isGameSafe ? 5000 : effectiveFlowPPS * 10,
             "blacklist_duration_sec": 30,
-            "tcp_max_conn_per_ip": isTheIsle ? 150 : (preset === 'WEB' || preset === 'HYBRID' ? 100 : 50),
-            "tcp_conn_rate_per_ip": isTheIsle ? 60 : 30,
-            "tcp_max_conn_per_subnet": isTheIsle ? 500 : 300,
+            "tcp_max_conn_per_ip": isGameSafe ? 150 : (preset === 'WEB' || preset === 'HYBRID' ? 100 : 50),
+            "tcp_conn_rate_per_ip": isGameSafe ? 60 : 30,
+            "tcp_max_conn_per_subnet": isGameSafe ? 500 : 300,
             "tcp_idle_timeout_sec": 90,
             "enable_amplification_filter": true,
-            "enable_dpi_shield": !isTheIsle,
+            "enable_dpi_shield": !isGameSafe,
             "enable_game_shield": true
         },
         "war_mode": {
             "trigger_pps": 15000,
             "trigger_bps": 52428800,
             "cooldown_sec": 60,
-            "udp_pps_per_flow": isTheIsle ? 250 : 35,
-            "udp_bps_per_flow": isTheIsle ? 2097152 : 524288,
-            "udp_pps_per_ip": isTheIsle ? 600 : 80,
-            "subnet_pps_limit": isTheIsle ? 2500 : 200,
+            "udp_pps_per_flow": isGameSafe ? 250 : 35,
+            "udp_bps_per_flow": isGameSafe ? 2097152 : 524288,
+            "udp_pps_per_ip": isGameSafe ? 600 : 80,
+            "subnet_pps_limit": isGameSafe ? 2500 : 200,
             "enable_dpi": true,
             "entropy_mode": "AUTO",
             "enable_twoway": true,
-            "geoip_mode": isTheIsle ? "OFF" : geoMode,
+            "geoip_mode": isGameSafe ? "OFF" : geoMode,
             "strict_whitelist": true
         },
         "web_dashboard": {
