@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -19,10 +20,11 @@ type PortSet struct {
 // PortDiscovery periodically scans the OS for listening TCP/UDP ports.
 // Uses Windows API GetExtendedTcpTable / GetExtendedUdpTable via iphlpapi.dll.
 type PortDiscovery struct {
-	current  atomic.Pointer[PortSet]
-	interval time.Duration
-	stopCh   chan struct{}
-	exclude  map[uint16]bool
+	current    atomic.Pointer[PortSet]
+	interval   time.Duration
+	stopCh     chan struct{}
+	exclude    map[uint16]bool
+	excludeMu  sync.RWMutex // protects exclude; workers read, web-server writes
 }
 
 // Windows API constants
@@ -127,14 +129,19 @@ func (pd *PortDiscovery) IsEstablishedTCP(connKey uint64) bool {
 
 // IsExcluded reports whether a port bypasses closed-port filtering.
 func (pd *PortDiscovery) IsExcluded(port uint16) bool {
-	return pd.exclude[port]
+	pd.excludeMu.RLock()
+	v := pd.exclude[port]
+	pd.excludeMu.RUnlock()
+	return v
 }
 
 // AddExcludePort registers an additional port to bypass all firewall heuristics
 // at runtime. Used by the web dashboard to ensure its own HTTP traffic is never
 // blocked by the TCP or UDP shield regardless of system mode.
 func (pd *PortDiscovery) AddExcludePort(port uint16) {
+	pd.excludeMu.Lock()
 	pd.exclude[port] = true
+	pd.excludeMu.Unlock()
 }
 
 // Start begins periodic scanning in a goroutine.

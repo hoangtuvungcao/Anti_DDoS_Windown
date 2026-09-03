@@ -413,6 +413,25 @@ func (e *Engine) worker(id int) {
 
 		// ═══ LAYER 1: Global Garbage & Reflection Filter ═══
 		// (Runs before GeoIP — garbage is always garbage regardless of country)
+		//
+		// IMPORTANT: IP fragments are passed through in PEACE/monitor mode.
+		// Layer1 drops ALL fragments (Rule 1 = teardrop defence), but that also
+		// drops legitimate large packets from IslePilot, voice-chat servers, etc.
+		// that are IP-fragmented by routers en route.
+		// In WAR mode we keep the drop (fragment floods are a real attack vector).
+		if pkt.IsFragment() {
+			if !e.advancedEnforcement.Load() {
+				// PEACE: reinject fragment immediately — no deep inspection possible without full reassembly.
+				e.inboundHandle.Send(buf[:n], &addr)
+			} else {
+				// WAR: drop to prevent teardrop / fragment-flood attacks.
+				e.metrics.Layer1Drops.Add(1)
+				e.metrics.DroppedPPS.Add(1)
+				e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
+			}
+			continue
+		}
+
 		result, rule := e.layer1.Check(&pkt)
 		if result == FilterDrop {
 			e.metrics.Layer1Drops.Add(1)
