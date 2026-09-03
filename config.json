@@ -19,6 +19,10 @@
   // 1. CẤU HÌNH THỜI BÌNH (PEACE MODE - LƯU LƯỢNG BÌNH THƯỜNG)
   // ------------------------------------------------------------------------------
   "peace_mode": {
+    // PEACE/ELEVATED chỉ giám sát, không can thiệp traffic hợp lệ của The Isle,
+    // Steam query, RCON, IslePilot, VoIP hoặc UltraViewer.
+    "monitor_only": true,
+
     // Giới hạn gói tin UDP tối đa trên mỗi luồng IP:Port (Gói tin/giây - PPS)
     "udp_pps_per_flow": 500,
 
@@ -49,8 +53,11 @@
     // Tự động chặn các đòn tấn công khuếch đại UDP (DNS 53, NTP 123, SSDP 1900, Memcached 11211...)
     "enable_amplification_filter": true,
 
-    // Bật phân tích sâu gói tin (Deep Packet Inspection) & lọc byte lặp trên mọi port
-    "enable_dpi_shield": true
+    // Không áp DPI ở thời bình; WAR có chính sách DPI riêng bên dưới.
+    "enable_dpi_shield": false,
+
+    // Nhận diện và đo query game; monitor_only bảo đảm không chặn lúc PEACE/ELEVATED.
+    "enable_game_shield": true
   },
 
 
@@ -59,7 +66,7 @@
   // ------------------------------------------------------------------------------
   "war_mode": {
     // Ngưỡng lưu lượng kích hoạt War Mode (PPS máy chủ nhận được vượt mức này sẽ bật War)
-    "trigger_pps": 8000,
+    "trigger_pps": 15000,
 
     // Ngưỡng băng thông kích hoạt War Mode (Bytes/giây, 52428800 = 50 MB/s)
     "trigger_bps": 52428800,
@@ -88,7 +95,7 @@
     // Xác thực phản hồi hai chiều (Two-Way Handshake Verification)
     "enable_twoway": true,
 
-    // Chế độ lọc địa lý Geo-IP ("AUTO", "ON", "OFF")
+    // Tắt Geo-IP để không cắt IslePilot, Steam/EOS, VoIP và người chơi quốc tế
     "geoip_mode": "OFF",
 
     // Ưu tiên tuyệt đối danh sách Whitelist không bị giới hạn tốc độ

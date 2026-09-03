@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -15,8 +16,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.PeaceMode.UDPPPSPerFlow != 120 {
 		t.Errorf("Expected UDP PPS flow limit 120, got %v", cfg.PeaceMode.UDPPPSPerFlow)
 	}
-	if cfg.WarMode.TriggerPPS != 4000 {
-		t.Errorf("Expected War trigger PPS 4000, got %d", cfg.WarMode.TriggerPPS)
+	if cfg.WarMode.TriggerPPS != 15000 {
+		t.Errorf("Expected War trigger PPS 15000, got %d", cfg.WarMode.TriggerPPS)
 	}
 	if cfg.WebDashboard.AllowLAN {
 		t.Error("production default must keep dashboard on localhost")
@@ -126,6 +127,9 @@ func TestLoad_WithVietnameseComments(t *testing.T) {
 	if cfg.PeaceMode.UDPPPSPerFlow != 120.0 {
 		t.Errorf("Expected UDPPPSPerFlow 120, got %v", cfg.PeaceMode.UDPPPSPerFlow)
 	}
+	if !cfg.PeaceMode.MonitorOnly {
+		t.Error("legacy config without monitor_only must migrate to safe monitoring mode")
+	}
 }
 
 func TestValidateRejectsUnauthenticatedLANDashboard(t *testing.T) {
@@ -138,5 +142,39 @@ func TestValidateRejectsUnauthenticatedLANDashboard(t *testing.T) {
 	cfg.WebDashboard.Password = "a-unique-password-2026"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected authenticated LAN dashboard to validate: %v", err)
+	}
+}
+
+func TestReleaseConfigsUseTheIsleProductionProfile(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate repository from test file")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
+	paths := []string{
+		filepath.Join(repoRoot, "config.json"),
+		filepath.Join(repoRoot, "WAF-Shield-Deploy", "config.json"),
+	}
+
+	for _, path := range paths {
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("release config %s is invalid: %v", path, err)
+		}
+		if !cfg.PeaceMode.MonitorOnly {
+			t.Errorf("%s: peace/elevated must be monitor-only", path)
+		}
+		if cfg.SystemMode != "AUTO" || cfg.WarMode.GeoIPMode != "OFF" {
+			t.Errorf("%s: expected AUTO mode and GeoIP OFF, got %s/%s", path, cfg.SystemMode, cfg.WarMode.GeoIPMode)
+		}
+		if cfg.WarMode.TriggerPPS != 15000 || cfg.WarMode.TriggerBPS != 50*1024*1024 {
+			t.Errorf("%s: unexpected WAR trigger: %d PPS, %d BPS", path, cfg.WarMode.TriggerPPS, cfg.WarMode.TriggerBPS)
+		}
+		if cfg.PeaceMode.UDPPPSPerFlow != 500 || cfg.PeaceMode.UDPPPSPerIP != 1500 {
+			t.Errorf("%s: The Isle peace limits are not installed", path)
+		}
+		if cfg.PeaceMode.EnableDPIShield || !cfg.PeaceMode.EnableGameShield {
+			t.Errorf("%s: expected peace DPI off and game telemetry enabled", path)
+		}
 	}
 }

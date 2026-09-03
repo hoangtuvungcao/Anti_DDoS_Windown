@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -50,6 +51,7 @@ type NotificationsConfig struct {
 
 // PeaceModeConfig holds normal operation settings
 type PeaceModeConfig struct {
+	MonitorOnly               bool    `json:"monitor_only"`
 	UDPPPSPerFlow             float64 `json:"udp_pps_per_flow"`
 	UDPBPSPerFlow             float64 `json:"udp_bps_per_flow"`
 	UDPPPSPerIP               float64 `json:"udp_pps_per_ip"`
@@ -113,6 +115,7 @@ func DefaultConfig() Config {
 		LogFile:    "resources/logs/shield.log",
 		SystemMode: "AUTO",
 		PeaceMode: PeaceModeConfig{
+			MonitorOnly:               true,
 			UDPPPSPerFlow:             120,
 			UDPBPSPerFlow:             1048576, // 1 MB/s
 			UDPPPSPerIP:               350,
@@ -128,8 +131,8 @@ func DefaultConfig() Config {
 		},
 
 		WarMode: WarModeConfig{
-			TriggerPPS:      4000,     // Reacts in <0.5s to any sudden spike
-			TriggerBPS:      31457280, // 30 MB/s
+			TriggerPPS:      15000,
+			TriggerBPS:      52428800, // 50 MiB/s inbound
 			CooldownSec:     60,
 			UDPPPSPerFlow:   35,
 			UDPBPSPerFlow:   524288,
@@ -192,6 +195,9 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(cleanData, &cfg); err != nil {
 		return nil, err
+	}
+	if !bytes.Contains(cleanData, []byte(`"monitor_only"`)) {
+		cfg.PeaceMode.MonitorOnly = true
 	}
 
 	// Fill zero values with defaults
@@ -366,6 +372,7 @@ func (c *Config) ToEngineConfig() engine.EngineConfig {
 		TCPMaxConnSubnet:          c.PeaceMode.TCPMaxConnPerSubnet,
 		TCPIdleTimeout:            c.PeaceMode.TCPIdleTimeoutSec,
 		EnableAmplificationFilter: c.PeaceMode.EnableAmplificationFilter,
+		PeaceMonitorOnly:          c.PeaceMode.MonitorOnly,
 		EnableGameShield:          c.PeaceMode.EnableGameShield,
 		EnableDPIShield:           c.PeaceMode.EnableDPIShield,
 		WarTriggerPPS:             c.WarMode.TriggerPPS,

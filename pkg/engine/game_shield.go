@@ -94,9 +94,6 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 			})
 
 			if !bucket.Value.Allow() {
-				if bucket.Value.ViolationCount() >= 50 {
-					bucket.Value.Blacklist(30 * time.Second)
-				}
 				return FilterDrop
 			}
 		}
@@ -113,9 +110,6 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 			})
 
 			if !bucket.Value.Allow() {
-				if bucket.Value.ViolationCount() >= 30 {
-					bucket.Value.Blacklist(30 * time.Second)
-				}
 				return FilterDrop
 			}
 		}
@@ -133,9 +127,6 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 			})
 
 			if !bucket.Value.Allow() {
-				if bucket.Value.ViolationCount() >= 50 {
-					bucket.Value.Blacklist(30 * time.Second)
-				}
 				return FilterDrop
 			}
 		}
@@ -148,9 +139,6 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		})
 
 		if !bucket.Value.Allow() {
-			if bucket.Value.ViolationCount() >= 20 {
-				bucket.Value.Blacklist(60 * time.Second)
-			}
 			return FilterDrop
 		}
 	}

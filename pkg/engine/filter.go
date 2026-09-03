@@ -65,6 +65,9 @@ func (f *Layer1Filter) SetAmplificationFilter(enabled bool) {
 
 // IsReflectionPort checks if a UDP source port is a known DDoS reflection vector.
 func (f *Layer1Filter) IsReflectionPort(port uint16) bool {
+	if !f.enableAmplificationFilter {
+		return false
+	}
 	_, ok := knownReflectionPorts[port]
 	return ok
 }

@@ -35,17 +35,18 @@ type Engine struct {
 	outboundHandle *windivert.Handle
 
 	// Layers
-	ipFilter    *IPFilter      // Layer 0: Whitelist / Blacklist
-	layer1      *Layer1Filter  // Layer 1: Garbage & Amplification
-	discovery   *PortDiscovery // Layer 2: Port Discovery
-	tcpShield   *TCPShield     // Layer 3: TCP Shield
-	udpShield   *UDPShield     // Layer 4 & 4.5: UDP & Game Shield
-	state       *StateManager
-	geoIPMode   atomic.Int32
-	entropyMode atomic.Int32
-	modeManager *ModeManager
-	geoIP       *GeoIP
-	autoDefense *AutoDefense
+	ipFilter            *IPFilter      // Layer 0: Whitelist / Blacklist
+	layer1              *Layer1Filter  // Layer 1: Garbage & Amplification
+	discovery           *PortDiscovery // Layer 2: Port Discovery
+	tcpShield           *TCPShield     // Layer 3: TCP Shield
+	udpShield           *UDPShield     // Layer 4 & 4.5: UDP & Game Shield
+	state               *StateManager
+	geoIPMode           atomic.Int32
+	entropyMode         atomic.Int32
+	advancedEnforcement atomic.Bool
+	modeManager         *ModeManager
+	geoIP               *GeoIP
+	autoDefense         *AutoDefense
 
 	// Metrics
 	metrics *stats.Metrics
@@ -83,6 +84,7 @@ type EngineConfig struct {
 	EnableAmplificationFilter bool
 	EnableGameShield          bool
 	EnableDPIShield           bool
+	PeaceMonitorOnly          bool
 
 	// War mode settings
 	WarTriggerPPS uint64
@@ -126,6 +128,7 @@ func DefaultConfig() EngineConfig {
 		EnableAmplificationFilter: true,
 		EnableGameShield:          true,
 		EnableDPIShield:           true,
+		PeaceMonitorOnly:          true,
 		WarTriggerPPS:             5000,
 		WarTriggerBPS:             52428800, // 50 MB/s
 		WarCooldown:               60,
@@ -276,6 +279,10 @@ func (e *Engine) ConfigurePeaceUDP(flowPPS, flowBPS, ipPPS, subnetPPS float64, d
 	e.cfgMu.Unlock()
 }
 
+func (e *Engine) IsAdvancedEnforcementEnabled() bool {
+	return e.advancedEnforcement.Load()
+}
+
 // Start begins packet processing with N worker goroutines.
 func (e *Engine) Start() {
 	e.running = true
@@ -359,7 +366,11 @@ func (e *Engine) worker(id int) {
 
 		// Feed telemetry before fast-path decisions so blocked bot traffic still
 		// contributes to attack detection and dashboard input counters.
-		e.state.RecordPacketDetails(pkt.TotalLen, pkt.SrcIPUint32(), pkt.Protocol, pkt.IsSYN())
+		suspiciousSource := pkt.IsSYN()
+		if pkt.Protocol == packet.ProtoUDP {
+			suspiciousSource = !e.udpShield.verifyTwoWay(&pkt)
+		}
+		e.state.RecordPacketDetails(pkt.TotalLen, pkt.SrcIPUint32(), pkt.Protocol, pkt.IsSYN(), suspiciousSource)
 		e.metrics.InboundPPS.Add(1)
 		e.metrics.InboundBPS.Add(uint64(pkt.TotalLen))
 
@@ -408,6 +419,13 @@ func (e *Engine) worker(id int) {
 			e.metrics.DroppedPPS.Add(1)
 			e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
 			_ = rule
+			continue
+		}
+
+		// Peace/Elevated monitor-only mode preserves game discovery, RCON,
+		// third-party control panels, VoIP and remote administration traffic.
+		if !e.advancedEnforcement.Load() {
+			e.inboundHandle.Send(buf[:n], &addr)
 			continue
 		}
 

@@ -3,7 +3,7 @@
 
 > **Tài liệu xác thực kiến trúc hệ thống và luồng xử lý mã nguồn**
 > Phiên bản: `v3.2.4 Enterprise`
-> Ngôn ngữ: `Go 1.21+ (Pure Windows Syscall / WinDivert 2.2)`
+> Ngôn ngữ: `Go 1.23+ (Pure Windows Syscall / WinDivert 2.2)`
 
 ---
 

@@ -32,7 +32,7 @@ type UDPShield struct {
 	// Game protocol shield (Layer 4.5)
 	GameShield *GameShield
 
-	// DPI signatures
+	// Optional operator-supplied deny signatures; game headers are never denied by default.
 	signatures []Signature
 
 	// Settings
@@ -72,7 +72,7 @@ func NewUDPShield(flowPPS, flowBPS, ipPPS, subnetPPS float64, blacklistDur time.
 		ipPPS:         ipPPS,
 		subnetPPS:     subnetPPS,
 		blacklistDur:  blacklistDur,
-		signatures:    defaultSignatures(),
+		signatures:    nil,
 	}
 }
 
@@ -89,6 +89,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	ipPPS, subnetPPS := us.ipPPS, us.subnetPPS
 	dpiEnabled, entropyCheck := us.dpiEnabled, us.entropyCheck
 	twowayEnabled := us.twowayEnabled
+	strict := us.strict
 	us.mu.RUnlock()
 	flowKey := pkt.FlowKey()
 	ipKey := pkt.IPFlowKey()
@@ -157,7 +158,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	pktSize := pkt.TotalLen
 	if !flowEntry.Value.Allow(pktSize) {
 		// Only blacklist under active War Mode attack with 150+ continuous flood violations
-		if us.strict && flowEntry.Value.ViolationCount() >= 150 {
+		if strict && flowEntry.Value.ViolationCount() >= 150 {
 			flowEntry.Value.Blacklist(30 * time.Second)
 		}
 		return FilterDrop, DropFlowRate
@@ -169,7 +170,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	})
 
 	if !ipEntry.Value.Allow() {
-		if us.strict && ipEntry.Value.ViolationCount() >= 200 {
+		if strict && ipEntry.Value.ViolationCount() >= 200 {
 			ipEntry.Value.Blacklist(30 * time.Second)
 		}
 		return FilterDrop, DropIPRate
@@ -181,7 +182,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	})
 
 	if !subnetEntry.Value.Allow() {
-		if us.strict && subnetEntry.Value.ViolationCount() >= 500 {
+		if strict && subnetEntry.Value.ViolationCount() >= 500 {
 			subnetEntry.Value.Blacklist(30 * time.Second)
 		}
 		return FilterDrop, DropSubnetRate
@@ -461,12 +462,4 @@ func (us *UDPShield) IsEntropyEnabled() bool {
 	us.mu.RLock()
 	defer us.mu.RUnlock()
 	return us.entropyCheck
-}
-
-// defaultSignatures returns built-in DPI block signatures.
-// NOTE: Game protocol headers (Source Engine, RakNet) are handled by
-// GameShield (query flood limiting), NOT blocked here via DPI.
-// Add custom signatures via config.json custom_rules.
-func defaultSignatures() []Signature {
-	return []Signature{}
 }

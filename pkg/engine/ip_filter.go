@@ -178,4 +178,3 @@ func (f *IPFilter) Count() (whitelistCount, blacklistCount int) {
 	defer f.mu.RUnlock()
 	return len(f.whitelistIPs) + len(f.whitelistCIDRs), len(f.blacklistIPs) + len(f.blacklistCIDRs)
 }
-

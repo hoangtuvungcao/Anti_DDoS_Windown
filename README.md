@@ -1,6 +1,6 @@
 <p align="center"><img src="app_256.png" width="132" alt="Biểu tượng WAF-Shield"></p>
 
-# WAF-Shield Enterprise v3.1 — Packet Firewall Anti-DDoS cho Windows
+# WAF-Shield Enterprise v3.4 — Packet Firewall Anti-DDoS cho Windows
 
 **WAF-Shield Enterprise** là giải pháp tường lửa và trung tâm điều hành bảo mật (SOC) chuyên dụng chống tấn công từ chối dịch vụ (**Anti-DDoS**) hoạt động trực tiếp trên nhân mạng Windows (Windows Server 2012, 2012 R2, 2016, 2019, 2022, 2025 và Windows 10, Windows 11).
 
@@ -10,7 +10,7 @@ Hệ thống chặn gói IPv4 qua WinDivert trước khi lưu lượng tới soc
 
 ---
 
-## 🌟 TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.1
+## 🌟 TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.4
 
 1. **📊 Giám Sát Lưu Lượng Mạng 2 Chiều Toàn Diện (Bidirectional RX & TX Telemetry)**:
    - Theo dõi song song **Lưu lượng đi vào (Inbound RX)** và **Lưu lượng phản hồi đi ra (Outbound TX)**.
@@ -157,32 +157,34 @@ Mọi thông số đều có thể điều chỉnh linh hoạt trong file `confi
 
   // ── 1. CẤU HÌNH THỜI BÌNH (PEACE MODE) ──
   "peace_mode": {
-    "udp_pps_per_flow": 120,           // PPS tối đa mỗi luồng IP:Port
-    "udp_bps_per_flow": 1048576,       // Bytes/s mỗi luồng (1 MB/s)
-    "udp_pps_per_ip": 350,             // Tổng PPS từ 1 IP
-    "subnet_pps_limit": 1200,          // Tổng PPS từ 1 dải /24
-    "blacklist_duration_sec": 300,     // Thời gian khóa IP vi phạm (5 phút)
-    "tcp_max_conn_per_ip": 60,         // Kết nối TCP đồng thời tối đa / IP
-    "tcp_conn_rate_per_ip": 25,        // Tốc độ tạo kết nối mới / IP / giây
-    "tcp_max_conn_per_subnet": 300,    // Kết nối TCP đồng thời tối đa / Subnet
+    "monitor_only": true,              // PEACE/ELEVATED chỉ quan sát
+    "udp_pps_per_flow": 500,
+    "udp_bps_per_flow": 5242880,
+    "udp_pps_per_ip": 1500,
+    "subnet_pps_limit": 5000,
+    "blacklist_duration_sec": 30,
+    "tcp_max_conn_per_ip": 150,
+    "tcp_conn_rate_per_ip": 60,
+    "tcp_max_conn_per_subnet": 500,
     "tcp_idle_timeout_sec": 90,        // Ngắt kết nối không có dữ liệu (giây)
-    "enable_amplification_filter": true, // Chặn UDP reflection (DNS, NTP, SSDP...)
-    "enable_dpi_shield": true          // Phân tích sâu gói tin (DPI)
+    "enable_amplification_filter": true, // Chặn UDP reflection trong WAR
+    "enable_dpi_shield": false,          // Không DPI trong PEACE
+    "enable_game_shield": true           // Đo/giới hạn query game khi WAR
   },
 
   // ── 2. CẤU HÌNH THỜI CHIẾN (WAR MODE) ──
   "war_mode": {
-    "trigger_pps": 4000,               // Ngưỡng PPS kích hoạt War Mode
-    "trigger_bps": 31457280,           // Ngưỡng BPS kích hoạt (30 MB/s)
+    "trigger_pps": 15000,
+    "trigger_bps": 52428800,
     "cooldown_sec": 60,                // Duy trì War bao lâu sau khi hết tấn công
-    "udp_pps_per_flow": 35,            // Siết chặt UDP mỗi luồng
-    "udp_bps_per_flow": 524288,        // 512 KiB/s mỗi luồng
-    "udp_pps_per_ip": 80,              // Siết chặt UDP mỗi IP
-    "subnet_pps_limit": 200,           // Siết chặt mỗi dải /24
+    "udp_pps_per_flow": 250,
+    "udp_bps_per_flow": 2097152,
+    "udp_pps_per_ip": 600,
+    "subnet_pps_limit": 2500,
     "enable_dpi": true,                // Bật DPI khi chiến
     "entropy_mode": "AUTO",            // Shannon Entropy: "AUTO" | "ON" | "OFF"
     "enable_twoway": true,             // Xác thực phản hồi 2 chiều
-    "geoip_mode": "AUTO",             // Geo-IP: "AUTO" | "ON" | "OFF"
+    "geoip_mode": "OFF",              // Giữ Steam/EOS/VoIP/quốc tế
     "strict_whitelist": true           // Whitelist không bị giới hạn tốc độ
   },
 
@@ -269,6 +271,15 @@ Khi phát hiện DDoS, hệ thống sẽ tự động gửi cảnh báo kèm th�
 
 ## ✅ Checklist Trước Khi Đưa Vào Production
 
+### Profile mặc định: The Isle Evrima 250 slot
+
+Profile release dựa trên số liệu khách hàng cung cấp: tổng download khoảng 5–15 Mbps và upload 10–25 Mbps ở tối đa 250 người chơi.
+
+- `peace_mode.monitor_only: true`: PEACE/ELEVATED chỉ đo và đánh giá, không rate-limit Steam query, gameplay, RCON, IslePilot, VoIP hoặc UltraViewer.
+- AUTO chỉ enforce khi vào WAR. Detector chỉ tính TCP SYN và UDP chưa được server phản hồi; người chơi UDP đã xác thực hai chiều không bị tính là botnet.
+- Ngưỡng WAR là 15.000 PPS hoặc 50 MiB/s inbound; Geo-IP để `OFF` nhằm giữ Steam/EOS, dịch vụ bên thứ ba và người chơi quốc tế.
+- Host firewall không thể cứu đường truyền VNPT Home 300 Mbps khi botnet đã làm đầy đường truyền trước modem. Khi đó cần ISP/business line hoặc scrubbing upstream; router mạnh hơn không tạo thêm băng thông.
+
 - Giữ `allow_lan: false` nếu dashboard chỉ dùng qua RDP. Nếu bật LAN, **bắt buộc** đặt `username` và mật khẩu riêng mạnh ≥ 12 ký tự; chương trình sẽ từ chối bind LAN khi thiếu thông tin xác thực.
 - Thêm IP quản trị cố định vào `whitelist_ips`, nhưng không whitelist cả dải rộng.
 - Bắt đầu bằng `system_mode: "AUTO"`, theo dõi `unique_source_ips`, `unique_subnets`, lý do drop và false-positive trước khi chọn `WAR` cố định.
@@ -281,7 +292,7 @@ Khi phát hiện DDoS, hệ thống sẽ tự động gửi cảnh báo kèm th�
 ## 🧑‍💻 BUILD TỪ MÃ NGUỒN
 
 ```bash
-# Yêu cầu: Go 1.21+ trên Windows
+# Yêu cầu: Go 1.23+ trên Windows
 
 # Build file thực thi
 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o waf-game.exe .

@@ -98,6 +98,7 @@ func (m *ModeManager) applyMode(isWar bool) {
 	if udpShield != nil {
 		switch mode {
 		case ModeOff:
+			m.eng.advancedEnforcement.Store(false)
 			// OFF: disable all advanced protections, very permissive rate limits
 			udpShield.SetDPI(false)
 			udpShield.SetEntropy(false)
@@ -108,6 +109,7 @@ func (m *ModeManager) applyMode(isWar bool) {
 			udpShield.SetRateLimits(1000000, 1000000000, 1000000, 1000000)
 
 		case ModeOn:
+			m.eng.advancedEnforcement.Store(true)
 			// ON: maximum protection
 			udpShield.SetDPI(cfg.WarEnableDPI)
 			udpShield.SetEntropy(true)
@@ -120,6 +122,7 @@ func (m *ModeManager) applyMode(isWar bool) {
 
 		default: // AUTO
 			if isWar {
+				m.eng.advancedEnforcement.Store(true)
 				udpShield.SetDPI(cfg.WarEnableDPI)
 				entropyMode := int(m.eng.entropyMode.Load())
 				if entropyMode == EntropyModeOn || entropyMode == EntropyModeAuto {
@@ -133,6 +136,7 @@ func (m *ModeManager) applyMode(isWar bool) {
 				}
 				udpShield.SetRateLimits(cfg.WarFlowPPS, cfg.WarFlowBPS, cfg.WarIPPPS, cfg.WarSubnetPPS)
 			} else {
+				m.eng.advancedEnforcement.Store(!cfg.PeaceMonitorOnly)
 				udpShield.SetDPI(cfg.EnableDPIShield)
 				if int(m.eng.entropyMode.Load()) == EntropyModeOn {
 					udpShield.SetEntropy(true)

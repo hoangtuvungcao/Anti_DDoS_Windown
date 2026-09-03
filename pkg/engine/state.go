@@ -87,8 +87,11 @@ func (sm *StateManager) RecordPacket(size uint16) {
 
 // RecordPacketDetails records traffic before filtering and feeds the distributed
 // botnet detector. Fixed-size atomic sketches avoid a global lock on the hot path.
-func (sm *StateManager) RecordPacketDetails(size uint16, srcIP uint32, protocol uint8, syn bool) {
+func (sm *StateManager) RecordPacketDetails(size uint16, srcIP uint32, protocol uint8, syn, suspicious bool) {
 	sm.RecordPacket(size)
+	if !suspicious {
+		return
+	}
 	if protocol == packet.ProtoUDP {
 		sm.udpPackets.Add(1)
 	}
@@ -128,6 +131,9 @@ func (sm *StateManager) Evaluate() {
 	sm.uniqueIPs.Store(ipBits)
 	sm.uniqueNets.Store(subnetBits)
 	protocolFlood := udp*10 >= pps*6 || syn*10 >= pps*4
+	suspiciousPackets := udp + syn
+	ppsAttack := pps >= sm.triggerPPS && suspiciousPackets*10 >= pps
+	ppsSiege := pps >= sm.triggerPPS*3 && suspiciousPackets*20 >= pps
 	// Distributed botnet requires broad cardinality (>= 500 IPs across >= 150 subnets)
 	distributedBotnet := pps >= 1000 && ipBits >= 500 && subnetBits >= 150 && protocolFlood
 	sm.botnet.Store(distributedBotnet)
@@ -140,7 +146,7 @@ func (sm *StateManager) Evaluate() {
 
 	// Dynamic multi-stage evaluation
 	switch {
-	case pps >= sm.triggerPPS*3 || bps >= sm.triggerBPS*3:
+	case ppsSiege || bps >= sm.triggerBPS*3:
 		// Under Siege level
 		if currentMode != ModeUnderSiege {
 			sm.mode.Store(int32(ModeUnderSiege))
@@ -150,7 +156,7 @@ func (sm *StateManager) Evaluate() {
 			}
 		}
 
-	case pps >= sm.triggerPPS || bps >= sm.triggerBPS || distributedBotnet:
+	case ppsAttack || bps >= sm.triggerBPS || distributedBotnet:
 		// War level
 		if currentMode != ModeWar && currentMode != ModeUnderSiege {
 			sm.mode.Store(int32(ModeWar))
@@ -207,13 +213,15 @@ func (sm *StateManager) ForceMode(mode SystemMode) {
 	}
 }
 
-// ResetToAuto releases manual override and triggers an immediate evaluation.
-// NOTE: Evaluate() will Swap(0) currentPPS/currentBPS which resets the 1-second accumulator.
-// This is acceptable here since the user explicitly changed mode \u2014 a clean-slate evaluation
-// is preferred over waiting up to 1 second for the next stateEvaluator tick.
+// ResetToAuto releases manual override and returns immediately to Peace. The
+// regular evaluator may escalate again after it observes a complete attack
+// window; this prevents a stale manual WAR state from disrupting valid traffic.
 func (sm *StateManager) ResetToAuto() {
 	sm.isManual.Store(false)
-	sm.Evaluate()
+	old := SystemMode(sm.mode.Swap(int32(ModePeace)))
+	if old != ModePeace && sm.onPeaceMode != nil {
+		sm.onPeaceMode()
+	}
 }
 
 // IsManual returns true if the system is currently under manual override.

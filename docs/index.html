@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>WAF-Shield Enterprise v3.1 — Packet Firewall Anti-DDoS cho Windows</title>
+    <title>WAF-Shield Enterprise v3.4 — Packet Firewall Anti-DDoS cho Windows</title>
     <meta name="description" content="Tường lửa Anti-DDoS cho Game Server, Web Server và API trên Windows, sử dụng WinDivert với giám sát RX/TX và phát hiện botnet phân tán.">
     <meta name="keywords" content="Anti DDoS Windows, Game Server DDoS Protection, WAF Shield, WinDivert Firewall, Anti SYN Flood, Anti UDP Flood">
-    <meta property="og:title" content="WAF-Shield Enterprise v3.1 — Anti-DDoS Firewall">
+    <meta property="og:title" content="WAF-Shield Enterprise v3.4 — Anti-DDoS Firewall">
     <meta property="og:description" content="Bảo vệ toàn diện Game Server và Web Server trên Windows trước các cuộc tấn công DDoS quy mô lớn.">
     <meta property="og:type" content="website">
 
@@ -42,7 +42,7 @@
                 </svg>
                 <div>
                     <span class="brand-title">WAF-SHIELD</span>
-                    <span class="brand-badge">ENTERPRISE v3.1</span>
+                    <span class="brand-badge">ENTERPRISE v3.4</span>
                 </div>
             </a>
 
@@ -82,7 +82,7 @@
                 <div class="hero-actions">
                     <a href="#download" class="btn btn-primary btn-lg">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        Tải Bản Phát Hành (v3.1)
+                        Tải Bản Phát Hành (v3.4)
                     </a>
                     <a href="#docs" class="btn btn-secondary btn-lg">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -348,7 +348,7 @@
             </div>
 
             <div class="download-card">
-                <h3 style="font-size:26px; font-weight:800; margin-bottom:12px;">WAF-Shield Enterprise v3.1 (Windows x64)</h3>
+                <h3 style="font-size:26px; font-weight:800; margin-bottom:12px;">WAF-Shield Enterprise v3.4 (Windows x64)</h3>
                 <p style="color:var(--text-secondary); max-width:600px; margin:0 auto 28px;">
                     Gói cài đặt tự chứa đầy đủ mã thực thi, driver NDIS WinDivert, cơ sở dữ liệu Geo-IP Việt Nam và kịch bản dịch vụ tự động.
                 </p>
@@ -484,7 +484,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                         <ul style="margin-left:20px; color:var(--text-secondary); line-height:1.8; font-size:14px;">
                             <li><b>Overview & Traffic</b>: Biểu đồ thời gian thực 60 giây 3 luồng (Clean RX, Outbound TX, Dropped DDoS).</li>
                             <li><b>Attack Radar</b>: Phân loại chiến thuật tấn công và đếm số gói tin bị triệt tiêu theo từng lớp.</li>
-                            <li><b>Presets & Tuning</b>: Kích hoạt 1 chạm các chế độ Full-Stack Hybrid, Game Shield, Web Shield, Strict Lockdown.</li>
+                            <li><b>Presets & Tuning</b>: Có profile The Isle Evrima 250 slot, Hybrid, Game, Web và Strict Lockdown.</li>
                             <li><b>Access Control</b>: Thêm/xóa nhanh IP vào Whitelist (Danh sách trắng) và Blacklist (Danh sách cấm).</li>
                             <li><b>Port Inspector</b>: Quét tự động danh sách các cổng TCP/UDP mở và lớp khiên tương ứng.</li>
                             <li><b>Security Logs</b>: Luồng nhật ký bảo mật trực tiếp theo thời gian thực.</li>
@@ -500,6 +500,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                             <div>
                                 <label style="font-size:12px; font-weight:700; color:var(--text-muted);">CHẾ ĐỘ MẶC ĐỊNH</label>
                                 <select id="cfgPreset" onchange="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
+                                    <option value="THE_ISLE">The Isle Evrima (250 slot)</option>
                                     <option value="HYBRID">Full-Stack Hybrid (Game + Web)</option>
                                     <option value="GAME">Universal Game Shield</option>
                                     <option value="WEB">High-Concurrency Web Shield</option>
@@ -516,7 +517,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                             </div>
                             <div>
                                 <label style="font-size:12px; font-weight:700; color:var(--text-muted);">MẬT KHẨU WEB SOC</label>
-                                <input type="text" id="cfgWebPass" value="admin_sec_2026" oninput="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
+                                <input type="password" id="cfgWebPass" value="" placeholder="Chỉ cần khi bật truy cập LAN" oninput="updateGeneratedConfig()" style="width:100%; padding:8px; background:rgba(6,11,24,0.8); border:1px solid var(--border-dim); border-radius:var(--radius-sm); color:#fff; font-size:13px; margin-top:4px;">
                             </div>
                         </div>
 
@@ -545,7 +546,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080</pre>
                 <div>
                     <div class="nav-brand" style="margin-bottom:12px;">
                         <span class="brand-title">WAF-SHIELD</span>
-                        <span class="brand-badge">v3.1</span>
+                        <span class="brand-badge">v3.4</span>
                     </div>
                     <p class="footer-desc">
                         Hệ thống tường lửa Anti-DDoS cấp độ nhân mạng NDIS cho Windows Server. Giải pháp bảo vệ trong suốt 100% cho mọi ứng dụng máy chủ và Game Server.

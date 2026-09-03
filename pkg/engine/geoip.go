@@ -221,4 +221,3 @@ func loadVNFallbackRanges() []IPRange {
 	}
 	return ranges
 }
-

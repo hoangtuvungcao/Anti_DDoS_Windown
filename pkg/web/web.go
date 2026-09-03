@@ -58,7 +58,7 @@ func NewServer(cfg WebConfig, eng *engine.Engine, metrics *stats.Metrics, fastLo
 		metrics:      metrics,
 		fastLog:      fastLog,
 		startTime:    time.Now(),
-		activePreset: "HYBRID",
+		activePreset: "THE_ISLE",
 	}
 }
 
@@ -204,6 +204,7 @@ func (s *Server) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 		"status":            "ACTIVE",
 		"system_mode":       string(mm.GetMode()),
 		"threat_mode":       threatStr,
+		"policy_state":      map[bool]string{true: "ENFORCING", false: "MONITORING"}[s.engine.IsAdvancedEnforcementEnabled()],
 		"active_preset":     activePreset,
 		"primary_vector":    string(ad.GetPrimaryAttackVector()),
 		"attack_diagnosis":  ad.FormatAttackDiagnosis(),
@@ -379,6 +380,18 @@ func (s *Server) handleAPIPreset(w http.ResponseWriter, r *http.Request) {
 
 	msg := ""
 	switch preset {
+	case "THE_ISLE":
+		s.engine.ConfigurePeaceUDP(500, 5242880, 1500, 5000, false, true)
+		udpShield.SetRateLimits(500, 5242880, 1500, 5000)
+		udpShield.SetDPI(false)
+		if udpShield.GameShield != nil {
+			udpShield.GameShield.SetEnabled(true)
+		}
+		tcpShield.SetMaxConn(150)
+		tcpShield.SetStrict(false)
+		s.engine.SetGeoIPMode(engine.GeoIPModeOff)
+		s.engine.GetModeManager().SetMode(engine.ModeAuto)
+		msg = "Applied Preset: The Isle Evrima 250-slot (Peace monitor-only, Steam/EOS/VoIP safe)"
 	case "HYBRID":
 
 		s.engine.ConfigurePeaceUDP(120, 1048576, 350, 1200, true, true)
@@ -945,6 +958,7 @@ const embeddedHTML = `<!DOCTYPE html>
                         <div style="display:flex; justify-content:space-between;"><span>Layer 3: Stateful SYN / ACK Scrubbing</span><b style="color:var(--green);">ARMED</b></div>
                         <div style="display:flex; justify-content:space-between;"><span>Layer 4: UDP Token Bucket / Subnet /24</span><b style="color:var(--green);">ARMED</b></div>
                         <div style="display:flex; justify-content:space-between;"><span>Geo-IP Filter (Vietnam Binary Tree)</span><b id="valGeoStatus" style="color:var(--yellow);">AUTO</b></div>
+                        <div style="display:flex; justify-content:space-between;"><span>Packet policy</span><b id="valPolicyState" style="color:var(--cyan);">MONITORING</b></div>
                     </div>
                 </div>
             </div>
@@ -998,9 +1012,20 @@ const embeddedHTML = `<!DOCTYPE html>
         <section id="tabPresets" class="tab-content">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
                 <h3 style="font-size:15px; font-weight:800;">1-Click Instant Defense Presets (Chế Độ Phòng Thủ 1 Chạm)</h3>
-                <div id="activePresetBadge" class="nav-badge badge-peace" style="font-size:12px;">ACTIVE: 🎮 GAME SHIELD</div>
+                <div id="activePresetBadge" class="nav-badge badge-peace" style="font-size:12px;">ACTIVE: THE ISLE EVRIMA</div>
             </div>
             <div class="grid-presets">
+                <div class="preset-card" id="cardPresetTheIsle" style="border:2px solid var(--purple); box-shadow:0 0 16px var(--purple-glow);">
+                    <div>
+                        <div class="preset-title" style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="color:#c084fc;">The Isle Evrima</span>
+                            <span id="tagPresetTheIsle" class="nav-badge badge-peace" style="font-size:10px;">ACTIVE</span>
+                        </div>
+                        <div class="preset-desc">Peace/Elevated chỉ quan sát để không làm mất tên server, ngắt IslePilot, RCON, Steam/EOS, VoIP hoặc UltraViewer. Chỉ kích hoạt chặn nâng cao khi detector xác nhận War Mode.</div>
+                    </div>
+                    <button class="btn btn-success btn-active" id="btnPresetTheIsle" onclick="applyPreset('THE_ISLE')">✓ ĐANG HOẠT ĐỘNG</button>
+                </div>
+
                 <div class="preset-card" id="cardPresetHybrid" style="border:1px solid var(--border);">
                     <div>
                         <div class="preset-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1251,6 +1276,9 @@ const embeddedHTML = `<!DOCTYPE html>
                 document.getElementById('valBansCount').innerText = data.total_bans;
                 document.getElementById('valUptime').innerText = data.uptime_sec + 's';
                 document.getElementById('valGeoStatus').innerText = data.geoip_mode;
+                const policyState = document.getElementById('valPolicyState');
+                policyState.innerText = data.policy_state || 'MONITORING';
+                policyState.style.color = data.policy_state === 'ENFORCING' ? 'var(--red)' : 'var(--cyan)';
 
                 // Push to Chart History
                 cleanHistory.push(data.passed_pps || 0);
@@ -1330,16 +1358,19 @@ const embeddedHTML = `<!DOCTYPE html>
 
         function updatePresetsUI(activePreset) {
             const cardHybrid = document.getElementById('cardPresetHybrid');
+            const cardTheIsle = document.getElementById('cardPresetTheIsle');
             const cardGame = document.getElementById('cardPresetGame');
             const cardWeb = document.getElementById('cardPresetWeb');
             const cardStrict = document.getElementById('cardPresetStrict');
 
             const btnHybrid = document.getElementById('btnPresetHybrid');
+            const btnTheIsle = document.getElementById('btnPresetTheIsle');
             const btnGame = document.getElementById('btnPresetGame');
             const btnWeb = document.getElementById('btnPresetWeb');
             const btnStrict = document.getElementById('btnPresetStrict');
 
             const tagHybrid = document.getElementById('tagPresetHybrid');
+            const tagTheIsle = document.getElementById('tagPresetTheIsle');
             const tagGame = document.getElementById('tagPresetGame');
             const tagWeb = document.getElementById('tagPresetWeb');
             const tagStrict = document.getElementById('tagPresetStrict');
@@ -1348,21 +1379,29 @@ const embeddedHTML = `<!DOCTYPE html>
 
             // Reset all cards & buttons
             if (cardHybrid) { cardHybrid.style.border = '1px solid var(--border)'; cardHybrid.style.boxShadow = 'none'; }
+            if (cardTheIsle) { cardTheIsle.style.border = '1px solid var(--border)'; cardTheIsle.style.boxShadow = 'none'; }
             if (cardGame) { cardGame.style.border = '1px solid var(--border)'; cardGame.style.boxShadow = 'none'; }
             if (cardWeb) { cardWeb.style.border = '1px solid var(--border)'; cardWeb.style.boxShadow = 'none'; }
             if (cardStrict) { cardStrict.style.border = '1px solid var(--border)'; cardStrict.style.boxShadow = 'none'; }
 
             if (btnHybrid) { btnHybrid.className = 'btn btn-primary'; btnHybrid.innerText = 'Kích Hoạt Cả Game & Web'; }
+            if (btnTheIsle) { btnTheIsle.className = 'btn btn-primary'; btnTheIsle.innerText = 'Kích Hoạt Profile Evrima'; }
             if (btnGame) { btnGame.className = 'btn btn-primary'; btnGame.innerText = 'Kích Hoạt Game Shield'; }
             if (btnWeb) { btnWeb.className = 'btn btn-primary'; btnWeb.innerText = 'Kích Hoạt Web Shield'; }
             if (btnStrict) { btnStrict.className = 'btn btn-danger'; btnStrict.innerText = 'Khóa Chặt Máy Chủ'; }
 
             if (tagHybrid) tagHybrid.style.display = 'none';
+            if (tagTheIsle) tagTheIsle.style.display = 'none';
             if (tagGame) tagGame.style.display = 'none';
             if (tagWeb) tagWeb.style.display = 'none';
             if (tagStrict) tagStrict.style.display = 'none';
 
-            if (activePreset === 'HYBRID') {
+            if (activePreset === 'THE_ISLE') {
+                if (cardTheIsle) { cardTheIsle.style.border = '2px solid var(--purple)'; cardTheIsle.style.boxShadow = '0 0 18px var(--purple-glow)'; }
+                if (btnTheIsle) { btnTheIsle.className = 'btn btn-success btn-active'; btnTheIsle.innerText = '✓ ĐANG HOẠT ĐỘNG'; }
+                if (tagTheIsle) tagTheIsle.style.display = 'inline-block';
+                if (badge) { badge.className = 'nav-badge badge-peace'; badge.innerText = 'ACTIVE: THE ISLE EVRIMA 250'; }
+            } else if (activePreset === 'HYBRID') {
                 if (cardHybrid) { cardHybrid.style.border = '2px solid var(--yellow)'; cardHybrid.style.boxShadow = '0 0 18px rgba(245, 158, 11, 0.4)'; }
                 if (btnHybrid) { btnHybrid.className = 'btn btn-success btn-active'; btnHybrid.innerText = '✓ ĐANG BẬT CẢ GAME & WEB'; }
                 if (tagHybrid) tagHybrid.style.display = 'inline-block';

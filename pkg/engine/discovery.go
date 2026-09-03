@@ -279,4 +279,3 @@ func (pd *PortDiscovery) scanUDP6(ps *PortSet) {
 		}
 	}
 }
-

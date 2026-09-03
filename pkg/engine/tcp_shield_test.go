@@ -308,5 +308,3 @@ func TestTCPShield_SlowlorisReaper(t *testing.T) {
 		t.Errorf("Expected 0 connections remaining, got %d", ts.GetVerifiedCount())
 	}
 }
-
-

@@ -143,5 +143,3 @@ func TestLayer1Filter_Check(t *testing.T) {
 		t.Errorf("Expected reflection ports to be recognized")
 	}
 }
-
-

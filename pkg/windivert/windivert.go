@@ -23,11 +23,11 @@ const (
 
 // Flag constants
 const (
-	FlagDefault  uint64 = 0
-	FlagSniff    uint64 = 1
-	FlagDrop     uint64 = 2
-	FlagRecvOnly uint64 = 4
-	FlagSendOnly uint64 = 8
+	FlagDefault   uint64 = 0
+	FlagSniff     uint64 = 1
+	FlagDrop      uint64 = 2
+	FlagRecvOnly  uint64 = 4
+	FlagSendOnly  uint64 = 8
 	FlagNoInstall uint64 = 16
 	FlagFragments uint64 = 32
 )
@@ -46,12 +46,12 @@ type Address struct {
 	Layer     uint32
 	Event     uint32
 	// Flags packed into bitfield
-	Flags     uint32
-	_         uint32
+	Flags uint32
+	_     uint32
 	// Network layer data
-	IfIdx     uint32
-	SubIfIdx  uint32
-	_         [48]byte // padding for union
+	IfIdx    uint32
+	SubIfIdx uint32
+	_        [48]byte // padding for union
 }
 
 // IsOutbound checks if the packet is outbound
@@ -70,21 +70,21 @@ func (a *Address) SetOutbound(outbound bool) {
 
 // Handle wraps a WinDivert handle
 type Handle struct {
-	handle   uintptr
-	mu       sync.Mutex
-	closed   bool
+	handle uintptr
+	mu     sync.Mutex
+	closed bool
 }
 
 var (
-	windivertDLL *syscall.LazyDLL
-	procOpen     *syscall.LazyProc
-	procRecv     *syscall.LazyProc
-	procRecvEx   *syscall.LazyProc
-	procSend     *syscall.LazyProc
-	procSendEx   *syscall.LazyProc
-	procClose    *syscall.LazyProc
-	procSetParam *syscall.LazyProc
-	procGetParam *syscall.LazyProc
+	windivertDLL     *syscall.LazyDLL
+	procOpen         *syscall.LazyProc
+	procRecv         *syscall.LazyProc
+	procRecvEx       *syscall.LazyProc
+	procSend         *syscall.LazyProc
+	procSendEx       *syscall.LazyProc
+	procClose        *syscall.LazyProc
+	procSetParam     *syscall.LazyProc
+	procGetParam     *syscall.LazyProc
 	procCalcChecksum *syscall.LazyProc
 
 	initOnce sync.Once

@@ -277,38 +277,51 @@ function initConfigGenerator() {
 }
 
 function updateGeneratedConfig() {
-    const preset = document.getElementById('cfgPreset') ? document.getElementById('cfgPreset').value : 'HYBRID';
+    const preset = document.getElementById('cfgPreset') ? document.getElementById('cfgPreset').value : 'THE_ISLE';
     const webPort = document.getElementById('cfgWebPort') ? parseInt(document.getElementById('cfgWebPort').value) || 8080 : 8080;
-    const webPass = document.getElementById('cfgWebPass') ? document.getElementById('cfgWebPass').value : 'admin_sec_2026';
+    const webPass = document.getElementById('cfgWebPass') ? document.getElementById('cfgWebPass').value : '';
     const flowPPS = document.getElementById('cfgFlowPPS') ? parseInt(document.getElementById('cfgFlowPPS').value) || 120 : 120;
     const geoMode = document.getElementById('cfgGeoMode') ? document.getElementById('cfgGeoMode').value : 'AUTO';
 
+    const isTheIsle = preset === 'THE_ISLE';
+    const effectiveFlowPPS = isTheIsle ? Math.max(flowPPS, 500) : flowPPS;
     const configObj = {
         "system_mode": "AUTO",
         "peace_mode": {
-            "udp_pps_per_flow": flowPPS,
-            "udp_bps_per_flow": 1048576,
-            "udp_pps_per_ip": flowPPS * 3,
-            "subnet_pps_limit": flowPPS * 10,
-            "tcp_max_conn_per_ip": preset === 'WEB' || preset === 'HYBRID' ? 100 : 50,
-            "tcp_conn_rate_per_ip": 30,
-            "tcp_idle_timeout_sec": 90
+            "monitor_only": true,
+            "udp_pps_per_flow": effectiveFlowPPS,
+            "udp_bps_per_flow": isTheIsle ? 5242880 : 1048576,
+            "udp_pps_per_ip": isTheIsle ? 1500 : effectiveFlowPPS * 3,
+            "subnet_pps_limit": isTheIsle ? 5000 : effectiveFlowPPS * 10,
+            "blacklist_duration_sec": 30,
+            "tcp_max_conn_per_ip": isTheIsle ? 150 : (preset === 'WEB' || preset === 'HYBRID' ? 100 : 50),
+            "tcp_conn_rate_per_ip": isTheIsle ? 60 : 30,
+            "tcp_max_conn_per_subnet": isTheIsle ? 500 : 300,
+            "tcp_idle_timeout_sec": 90,
+            "enable_amplification_filter": true,
+            "enable_dpi_shield": !isTheIsle,
+            "enable_game_shield": true
         },
         "war_mode": {
-            "trigger_pps": 4000,
-            "trigger_bps": 31457280,
-            "udp_pps_per_flow": 35,
-            "udp_bps_per_flow": 524288,
-            "udp_pps_per_ip": 80,
-            "subnet_pps_limit": 200,
-            "geoip_mode": geoMode
+            "trigger_pps": 15000,
+            "trigger_bps": 52428800,
+            "cooldown_sec": 60,
+            "udp_pps_per_flow": isTheIsle ? 250 : 35,
+            "udp_bps_per_flow": isTheIsle ? 2097152 : 524288,
+            "udp_pps_per_ip": isTheIsle ? 600 : 80,
+            "subnet_pps_limit": isTheIsle ? 2500 : 200,
+            "enable_dpi": true,
+            "entropy_mode": "AUTO",
+            "enable_twoway": true,
+            "geoip_mode": isTheIsle ? "OFF" : geoMode,
+            "strict_whitelist": true
         },
         "web_dashboard": {
             "enabled": true,
             "port": webPort,
-            "username": "admin",
+            "username": "",
             "password": webPass,
-            "allow_lan": true
+            "allow_lan": false
         }
     };
 

@@ -32,7 +32,7 @@ func TestStateManager_Transitions(t *testing.T) {
 
 	// 2. PPS exceeds threshold -> War Mode
 	for i := 0; i < 105; i++ {
-		sm.RecordPacket(50)
+		sm.RecordPacketDetails(50, uint32(i+1), packet.ProtoTCP, true, true)
 	}
 	sm.Evaluate()
 	if sm.GetMode() != ModeWar || warCalled != 1 {
@@ -64,7 +64,7 @@ func TestStateManagerDetectsDistributedBotnetBelowGlobalThreshold(t *testing.T) 
 	// per-IP and per-/24 limiters alone cannot identify the campaign.
 	for i := 0; i < 1000; i++ {
 		ip := uint32(10)<<24 | uint32(i%250)<<16 | uint32(i/250)<<8 | uint32(i%253+1)
-		sm.RecordPacketDetails(96, ip, packet.ProtoUDP, false)
+		sm.RecordPacketDetails(96, ip, packet.ProtoUDP, false, true)
 	}
 	sm.Evaluate()
 
@@ -73,6 +73,18 @@ func TestStateManagerDetectsDistributedBotnetBelowGlobalThreshold(t *testing.T) 
 	}
 	if sm.GetUniqueIPs() < 900 || sm.GetUniqueSubnets() < 200 {
 		t.Fatalf("cardinality sketch unexpectedly inaccurate: ip=%d subnet=%d", sm.GetUniqueIPs(), sm.GetUniqueSubnets())
+	}
+}
+
+func TestStateManagerDoesNotFlagVerifiedGamePopulationAsBotnet(t *testing.T) {
+	sm := NewStateManager(15000, 50*1024*1024, 1)
+	for i := 0; i < 20000; i++ {
+		ip := uint32(10)<<24 | uint32(i%250)<<16 | uint32(i/250)<<8 | uint32(i%253+1)
+		sm.RecordPacketDetails(128, ip, packet.ProtoUDP, false, false)
+	}
+	sm.Evaluate()
+	if sm.IsBotnetDetected() || sm.IsWarMode() {
+		t.Fatalf("verified game population caused false positive: botnet=%v mode=%v", sm.IsBotnetDetected(), sm.GetMode())
 	}
 }
 
