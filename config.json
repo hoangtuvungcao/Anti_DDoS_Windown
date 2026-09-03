@@ -174,7 +174,10 @@
   // ------------------------------------------------------------------------------
   // 8. DANH SÁCH IP TIN CẬY & DANH SÁCH ĐEN VĨNH VIỄN
   // ------------------------------------------------------------------------------
-  // Danh sách IP tin cậy (Không bao giờ bị chặn/giới hạn)
+  // Danh sách IP tin cậy (Không bao giờ bị chặn/giới hạn - Bypass mọi filter kể cả GeoIP)
+  // QUAN TRỌNG: Thêm IP của IslePilot, Steam, công cụ quản lý vào đây
+  // để chúng vẫn hoạt động khi WAR mode bật GeoIP.
+  // Hỗ trợ: IP đơn (1.2.3.4) hoặc CIDR (1.2.3.0/24)
   "whitelist_ips": [
     "127.0.0.1"
   ],

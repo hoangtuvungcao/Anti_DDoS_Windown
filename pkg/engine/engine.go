@@ -411,32 +411,8 @@ func (e *Engine) worker(id int) {
 			e.tcpShield.ObserveTCP(&pkt, true)
 		}
 
-		// ═══ GEOIP COUNTRY FILTER (O(log N) Binary Search) ═══
-		geoMode := int(e.geoIPMode.Load()) // load once
-		shouldGeoBlock := geoMode == GeoIPModeOn || (geoMode == GeoIPModeAuto && e.state.IsWarMode())
-
-		if shouldGeoBlock {
-			srcIP := net.IP(pkt.SrcIP[:])
-			if !e.geoIP.IsVietnamIP(srcIP) {
-				isResponse := false
-				if pkt.Protocol == packet.ProtoTCP {
-					// Bug fix: previously used '!pkt.IsSYN()' which allowed foreign ACK/RST/FIN floods to bypass GeoIP!
-					// Now strictly checks if connection was verified (outbound response or established session).
-					isResponse = e.tcpShield.IsVerified(pkt.ConnKey())
-				} else if pkt.Protocol == packet.ProtoUDP {
-					isResponse = e.udpShield.verifyTwoWay(&pkt)
-				}
-
-				if !isResponse {
-					e.metrics.Layer1Drops.Add(1)
-					e.metrics.DroppedPPS.Add(1)
-					e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen)) // Bug fix: missing BPS counter
-					continue
-				}
-			}
-		}
-
 		// ═══ LAYER 1: Global Garbage & Reflection Filter ═══
+		// (Runs before GeoIP — garbage is always garbage regardless of country)
 		result, rule := e.layer1.Check(&pkt)
 		if result == FilterDrop {
 			e.metrics.Layer1Drops.Add(1)
@@ -446,14 +422,45 @@ func (e *Engine) worker(id int) {
 			continue
 		}
 
-		// Peace/Elevated monitor-only mode preserves game discovery, RCON,
-		// third-party control panels, VoIP and remote administration traffic.
+		// ═══ PEACE/MONITOR MODE PASS-THROUGH ═══
+		// In monitor-only mode (PEACE) we observe connections but never drop.
+		// This must run BEFORE GeoIP enforcement so that management tools like
+		// IslePilot (hosted on non-VN servers) can always reach the game server
+		// during normal operation. GeoIP enforcement kicks in only during WAR mode.
 		if !e.advancedEnforcement.Load() {
 			if pkt.Protocol == packet.ProtoTCP {
 				e.tcpShield.ObserveTCP(&pkt, e.discovery.IsEstablishedTCP(pkt.ConnKey()))
 			}
 			e.inboundHandle.Send(buf[:n], &addr)
 			continue
+		}
+
+		// ═══ GEOIP COUNTRY FILTER (O(log N) Binary Search) ═══
+		// Only enforces when advancedEnforcement is active (WAR mode).
+		// In PEACE mode this block is never reached (pass-through above).
+		// GeoIPModeOn  = always enforce (WAR mode only due to gate above)
+		// GeoIPModeAuto = enforce only when WAR mode is active
+		geoMode := int(e.geoIPMode.Load()) // load once
+		shouldGeoBlock := geoMode == GeoIPModeOn || (geoMode == GeoIPModeAuto && e.state.IsWarMode())
+
+		if shouldGeoBlock {
+			srcIP := net.IP(pkt.SrcIP[:])
+			if !e.geoIP.IsVietnamIP(srcIP) {
+				isResponse := false
+				if pkt.Protocol == packet.ProtoTCP {
+					// Only pass if this connection tuple was already verified (server sent data to this IP)
+					isResponse = e.tcpShield.IsVerified(pkt.ConnKey())
+				} else if pkt.Protocol == packet.ProtoUDP {
+					isResponse = e.udpShield.verifyTwoWay(&pkt)
+				}
+
+				if !isResponse {
+					e.metrics.Layer1Drops.Add(1)
+					e.metrics.DroppedPPS.Add(1)
+					e.metrics.DroppedBPS.Add(uint64(pkt.TotalLen))
+					continue
+				}
+			}
 		}
 
 		// ═══ LAYER 2: Socket Discovery (Closed Port Scan & Attack Filter) ═══
