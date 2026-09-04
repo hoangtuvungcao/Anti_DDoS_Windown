@@ -63,6 +63,40 @@ func TestGameShield_SAMPQueryLimiting(t *testing.T) {
 	}
 }
 
+func TestGameShield_QueryClassesDoNotPoisonSteamListingLimit(t *testing.T) {
+	gs := NewGameShield(nil)
+	pkt := &packet.Packet{
+		Protocol: packet.ProtoUDP,
+		SrcIP:    [4]byte{192, 0, 2, 50},
+		DstIP:    [4]byte{192, 0, 2, 2},
+		SrcPort:  12345,
+		DstPort:  27015,
+	}
+
+	repeated := make([]byte, 32)
+	for i := range repeated {
+		repeated[i] = 0x41
+	}
+	for i := 0; i < 10; i++ {
+		if got := gs.CheckGamePacket(pkt, repeated); got != FilterPass {
+			t.Fatalf("repeated-payload packet %d dropped too early: %v", i+1, got)
+		}
+	}
+	if got := gs.CheckGamePacket(pkt, repeated); got != FilterDrop {
+		t.Fatalf("repeated-payload limiter was not enforced: %v", got)
+	}
+
+	// The same source must still receive its independent 60-PPS A2S budget.
+	// Previously both signatures shared the first-created 10-PPS bucket, which
+	// could make a healthy server disappear from the Steam browser.
+	a2s := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0x54, 'S', 'o', 'u', 'r', 'c', 'e'}
+	for i := 0; i < 60; i++ {
+		if got := gs.CheckGamePacket(pkt, a2s); got != FilterPass {
+			t.Fatalf("A2S query %d inherited another protocol's limit: %v", i+1, got)
+		}
+	}
+}
+
 func TestGameShield_CustomPortRuleWithoutSignatureLimitsAllPayloads(t *testing.T) {
 	gs := NewGameShield([]CustomGameRule{{Port: 9000, Protocol: "UDP", AllowPPS: 2}})
 	pkt := &packet.Packet{

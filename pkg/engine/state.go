@@ -34,7 +34,7 @@ type StateManager struct {
 
 	// Cooldown
 	cooldownSec  int64
-	warStartTime int64
+	warStartTime atomic.Int64
 
 	// Traffic tracking (1-second window)
 	currentPPS atomic.Uint64
@@ -150,7 +150,7 @@ func (sm *StateManager) Evaluate() {
 		// Under Siege level
 		if currentMode != ModeUnderSiege {
 			sm.mode.Store(int32(ModeUnderSiege))
-			sm.warStartTime = time.Now().Unix()
+			sm.warStartTime.Store(time.Now().Unix())
 			if sm.onWarMode != nil {
 				sm.onWarMode()
 			}
@@ -160,7 +160,7 @@ func (sm *StateManager) Evaluate() {
 		// War level
 		if currentMode != ModeWar && currentMode != ModeUnderSiege {
 			sm.mode.Store(int32(ModeWar))
-			sm.warStartTime = time.Now().Unix()
+			sm.warStartTime.Store(time.Now().Unix())
 			if sm.onWarMode != nil {
 				sm.onWarMode()
 			}
@@ -175,7 +175,7 @@ func (sm *StateManager) Evaluate() {
 	default:
 		// Traffic is low — check cooldown before de-escalating
 		if currentMode >= ModeWar {
-			elapsed := time.Now().Unix() - sm.warStartTime
+			elapsed := time.Now().Unix() - sm.warStartTime.Load()
 			if elapsed >= sm.cooldownSec && pps <= sm.triggerPPS/3 && bps <= sm.triggerBPS/3 {
 				sm.mode.Store(int32(ModePeace))
 				if sm.onPeaceMode != nil {
@@ -202,7 +202,7 @@ func (sm *StateManager) ForceMode(mode SystemMode) {
 	}
 
 	if mode >= ModeWar {
-		sm.warStartTime = time.Now().Unix()
+		sm.warStartTime.Store(time.Now().Unix())
 		if sm.onWarMode != nil {
 			sm.onWarMode()
 		}

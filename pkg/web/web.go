@@ -121,9 +121,10 @@ func (s *Server) Start() error {
 			s.mu.Lock()
 			s.activePort = tryPort
 			s.mu.Unlock()
-			// Register actual port as excluded so WAF does NOT intercept its own HTTP traffic.
+			// Rescan listeners immediately. The dashboard is protected like every
+			// other service; it is not granted a blanket port-based bypass.
 			if s.engine != nil {
-				s.engine.GetDiscovery().AddExcludePort(uint16(tryPort))
+				s.engine.GetDiscovery().Refresh()
 			}
 			if attempt > 0 {
 				// Configured port was busy; notify operator via log.
@@ -589,7 +590,7 @@ const embeddedHTML = `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>WAF-Shield Enterprise — Cyber Defense Center</title>
+    <title>WAF-Shield Enterprise v3.6.0 — Defense Center</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="apple-touch-icon" href="/logo.png">
 
@@ -616,7 +617,7 @@ const embeddedHTML = `<!DOCTYPE html>
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-        body { background: var(--bg-base); color: var(--text-main); min-height: 100vh; padding-bottom: 50px; overflow-x: hidden; }
+        body { background: radial-gradient(circle at 15% -10%, rgba(0,240,255,.09), transparent 30%), radial-gradient(circle at 90% 5%, rgba(168,85,247,.08), transparent 26%), var(--bg-base); color: var(--text-main); min-height: 100vh; padding-bottom: 50px; overflow-x: hidden; }
 
         /* Top Cyber Navbar */
         .navbar {
@@ -635,6 +636,7 @@ const embeddedHTML = `<!DOCTYPE html>
         .logo-icon { width: 32px; height: 32px; filter: drop-shadow(0 0 8px var(--cyan)); }
         .nav-logo { font-size: 20px; font-weight: 900; color: #fff; letter-spacing: 0.8px; }
         .nav-logo span { color: var(--cyan); }
+        .version-chip { color: var(--text-dim); font-size: 10px; font-weight: 800; letter-spacing: .8px; padding: 4px 7px; border: 1px solid var(--border-highlight); border-radius: 7px; background: rgba(255,255,255,.03); }
         .nav-badge {
             padding: 5px 14px;
             border-radius: 20px;
@@ -683,6 +685,27 @@ const embeddedHTML = `<!DOCTYPE html>
         }
         .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
         .tab-btn.active { background: var(--blue); color: #fff; box-shadow: 0 0 14px rgba(59, 130, 246, 0.5); }
+
+        .system-ribbon {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: -6px 0 22px;
+        }
+        .guardrail {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            min-width: 0;
+            padding: 11px 13px;
+            background: rgba(13,21,39,.74);
+            border: 1px solid var(--border);
+            border-radius: 11px;
+        }
+        .guardrail-icon { display:grid; place-items:center; width:30px; height:30px; flex:0 0 30px; border-radius:9px; color:var(--cyan); background:rgba(0,240,255,.1); border:1px solid rgba(0,240,255,.22); }
+        .guardrail-icon svg { width:17px; height:17px; }
+        .guardrail strong { display:block; font-size:11px; letter-spacing:.5px; }
+        .guardrail small { display:block; margin-top:2px; color:var(--text-dim); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
         /* KPI Cards Grid */
         .grid-kpi {
@@ -844,6 +867,7 @@ const embeddedHTML = `<!DOCTYPE html>
                 grid-template-columns: repeat(2, 1fr);
                 gap: 10px;
             }
+            .system-ribbon { grid-template-columns: 1fr; }
             .grid-2col {
                 grid-template-columns: 1fr;
                 gap: 14px;
@@ -892,6 +916,7 @@ const embeddedHTML = `<!DOCTYPE html>
             <!-- 3D Master Cyber Shield Logo -->
             <img src="/logo.png" class="logo-icon" alt="WAF-Shield Logo" style="width:36px; height:36px; border-radius:8px; filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.7)); object-fit: contain;">
             <div class="nav-logo">WAF-<span>SHIELD</span></div>
+            <div class="version-chip">v3.6.0</div>
             <div id="statusBadge" class="nav-badge badge-peace">[AUTO-PEACE]</div>
         </div>
 
@@ -899,7 +924,7 @@ const embeddedHTML = `<!DOCTYPE html>
 
         <div class="nav-actions">
             <button class="btn btn-primary" id="btnMode" onclick="cycleMode()"> MODE: AUTO</button>
-            <button class="btn btn-primary" id="btnGeo" onclick="cycleGeo()"> GEO: AUTO</button>
+            <button class="btn" id="btnGeo" onclick="cycleGeo()"> GEO: OFF</button>
         </div>
     </header>
 
@@ -908,13 +933,19 @@ const embeddedHTML = `<!DOCTYPE html>
 
         <!-- Navigation Tabs -->
         <nav class="tabs">
-            <button class="tab-btn active" onclick="showTab('tabOverview')">Overview & Traffic</button>
-            <button class="tab-btn" onclick="showTab('tabRadar')">Attack Radar</button>
-            <button class="tab-btn" onclick="showTab('tabPresets')">Presets & Tuning</button>
-            <button class="tab-btn" onclick="showTab('tabBans')">Access Control (Bans / White)</button>
-            <button class="tab-btn" onclick="showTab('tabPorts')">Port Inspector</button>
-            <button class="tab-btn" onclick="showTab('tabLogs')">Security Logs</button>
+            <button class="tab-btn active" onclick="showTab('tabOverview')">Tổng quan</button>
+            <button class="tab-btn" onclick="showTab('tabRadar')">Radar tấn công</button>
+            <button class="tab-btn" onclick="showTab('tabPresets')">Cấu hình nhanh</button>
+            <button class="tab-btn" onclick="showTab('tabBans')">IP tin cậy / bị chặn</button>
+            <button class="tab-btn" onclick="showTab('tabPorts')">Cổng dịch vụ</button>
+            <button class="tab-btn" onclick="showTab('tabLogs')">Nhật ký</button>
         </nav>
+
+        <div class="system-ribbon" aria-label="Production guardrails">
+            <div class="guardrail"><span class="guardrail-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/><path d="M12 22C6.5 20.5 3 16 3 10V5l9-3 9 3v5c0 6-3.5 10.5-9 12z"/></svg></span><div><strong>PAIRING GUARD</strong><small>Exact IP + remote port + local port</small></div></div>
+            <div class="guardrail"><span class="guardrail-icon" style="color:var(--purple);background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.22)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="6" r="3"/><circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M10 8.5L6.5 14M14 8.5l3.5 5.5M8 17h8"/></svg></span><div><strong>BOTNET DETECTOR</strong><small>IP/subnet cardinality + UDP/SYN behavior</small></div></div>
+            <div class="guardrail"><span class="guardrail-icon" style="color:var(--green);background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.22)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M4 7h16M4 17h10"/></svg></span><div><strong>NO PORT BYPASS</strong><small>Mọi dịch vụ vẫn qua lớp chống DDoS</small></div></div>
+        </div>
 
         <!-- TAB 1: OVERVIEW & TRAFFIC -->
         <section id="tabOverview" class="tab-content active">
@@ -1080,15 +1111,15 @@ const embeddedHTML = `<!DOCTYPE html>
                     <button class="btn btn-primary" id="btnPresetHybrid" onclick="applyPreset('HYBRID')">Kích Hoạt Cả Game & Web</button>
                 </div>
 
-                <div class="preset-card" id="cardPresetGame" style="border:2px solid var(--green); box-shadow:0 0 16px var(--green-glow);">
+                <div class="preset-card" id="cardPresetGame">
                     <div>
                         <div class="preset-title" style="display:flex; justify-content:space-between; align-items:center;">
                             <span>Universal Game Server Shield</span>
-                            <span id="tagPresetGame" class="nav-badge badge-peace" style="font-size:10px;">ACTIVE</span>
+                            <span id="tagPresetGame" class="nav-badge badge-peace" style="display:none; font-size:10px;">ACTIVE</span>
                         </div>
-                        <div class="preset-desc">Tối ưu chuyên sâu cho Game Server thời gian thực (UDP Realtime). Bật bộ lọc DPI nhận diện chữ ký gói tin, lọc flood truy vấn (Query Spam Filter) và giới hạn 120 PPS/luồng.</div>
+                        <div class="preset-desc">Tối ưu cho Game Server thời gian thực. PEACE giám sát 500 PPS/luồng; WAR siết 250 PPS/luồng và tách riêng quota Steam/A2S để không làm mất tên server.</div>
                     </div>
-                    <button class="btn btn-success btn-active" id="btnPresetGame" onclick="applyPreset('GAME')">✓ ĐANG HOẠT ĐỘNG</button>
+                    <button class="btn btn-primary" id="btnPresetGame" onclick="applyPreset('GAME')">Kích Hoạt Game Shield</button>
                 </div>
 
                 <div class="preset-card" id="cardPresetWeb">

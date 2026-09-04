@@ -108,6 +108,26 @@ func TestShardedMap_Concurrency(t *testing.T) {
 	}
 }
 
+func TestShardedMap_UpdateExistingIsAtomic(t *testing.T) {
+	sm := NewShardedMap[int](100)
+	sm.Set(1, 0)
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if !sm.UpdateExisting(1, func(value int) int { return value + 1 }) {
+				t.Error("existing value disappeared")
+			}
+		}()
+	}
+	wg.Wait()
+	value, ok := sm.GetValue(1)
+	if !ok || value != 100 {
+		t.Fatalf("atomic updates lost writes: found=%v value=%d", ok, value)
+	}
+}
+
 func TestShardedMap_EvictOldestWithCallback(t *testing.T) {
 	sm := NewShardedMap[int](100)
 	for i := uint64(0); i < 100; i++ {
@@ -172,5 +192,24 @@ func TestIPBucket_Limit(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 	if !ib.Allow() {
 		t.Errorf("Should allow after blacklist expiration")
+	}
+}
+
+func TestRateLimitViolationScoreRecoversAfterValidTraffic(t *testing.T) {
+	ib := NewIPBucket(1)
+	if !ib.Allow() || ib.Allow() {
+		t.Fatal("failed to create one IP rate-limit violation")
+	}
+	if got := ib.ViolationCount(); got != 1 {
+		t.Fatalf("unexpected initial violation score: %d", got)
+	}
+	ib.mu.Lock()
+	ib.LastRefill = time.Now().Add(-time.Second).UnixNano()
+	ib.mu.Unlock()
+	if !ib.Allow() {
+		t.Fatal("valid traffic did not pass after token refill")
+	}
+	if got := ib.ViolationCount(); got != 0 {
+		t.Fatalf("valid traffic did not decay violation score: %d", got)
 	}
 }

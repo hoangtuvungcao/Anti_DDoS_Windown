@@ -20,6 +20,12 @@ type UDPShield struct {
 	// 2. Per-IP aggregate rate limiting (Key = srcIP)
 	ipBuckets *datastore.ShardedMap[*datastore.IPBucket]
 
+	// Separate rate limiter for inbound peers that have not completed two-way
+	// verification yet. It must not share state with the aggregate IP limiter:
+	// doing so charges every unverified packet twice and can permanently leave
+	// an IP bucket at the much lower handshake limit.
+	unverifiedBuckets *datastore.ShardedMap[*datastore.IPBucket]
+
 	// 3. Per-Subnet (/24) aggregate rate limiting (Key = srcIP >> 8)
 	subnetBuckets *datastore.ShardedMap[*datastore.SubnetBucket]
 
@@ -62,17 +68,18 @@ func NewUDPShield(flowPPS, flowBPS, ipPPS, subnetPPS float64, blacklistDur time.
 	}
 
 	return &UDPShield{
-		flowBuckets:   datastore.NewShardedMap[*datastore.FlowBucket](200000),
-		ipBuckets:     datastore.NewShardedMap[*datastore.IPBucket](50000),
-		subnetBuckets: datastore.NewShardedMap[*datastore.SubnetBucket](20000),
-		outboundSeen:  datastore.NewShardedMap[int64](100000),
-		GameShield:    NewGameShield(gameRules),
-		flowPPS:       flowPPS,
-		flowBPS:       flowBPS,
-		ipPPS:         ipPPS,
-		subnetPPS:     subnetPPS,
-		blacklistDur:  blacklistDur,
-		signatures:    nil,
+		flowBuckets:       datastore.NewShardedMap[*datastore.FlowBucket](200000),
+		ipBuckets:         datastore.NewShardedMap[*datastore.IPBucket](50000),
+		unverifiedBuckets: datastore.NewShardedMap[*datastore.IPBucket](50000),
+		subnetBuckets:     datastore.NewShardedMap[*datastore.SubnetBucket](20000),
+		outboundSeen:      datastore.NewShardedMap[int64](100000),
+		GameShield:        NewGameShield(gameRules),
+		flowPPS:           flowPPS,
+		flowBPS:           flowBPS,
+		ipPPS:             ipPPS,
+		subnetPPS:         subnetPPS,
+		blacklistDur:      blacklistDur,
+		signatures:        nil,
 	}
 }
 
@@ -87,6 +94,7 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	us.mu.RLock()
 	flowPPS, flowBPS := us.flowPPS, us.flowBPS
 	ipPPS, subnetPPS := us.ipPPS, us.subnetPPS
+	unverifiedPPS := calculateUnverifiedPPS(flowPPS, ipPPS)
 	blacklistDur := us.blacklistDur
 	dpiEnabled, entropyCheck := us.dpiEnabled, us.entropyCheck
 	twowayEnabled := us.twowayEnabled
@@ -121,8 +129,8 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	isVerifiedClient := us.verifyTwoWay(pkt)
 	if twowayEnabled && !isVerifiedClient {
 		// In strict two-way mode, unverified inbound UDP is rate-limited without banning
-		unverifiedIPEntry, _ := us.ipBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
-			return datastore.NewIPBucket(60) // Generous 60 PPS for handshake
+		unverifiedIPEntry, _ := us.unverifiedBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+			return datastore.NewIPBucket(unverifiedPPS)
 		})
 		if !unverifiedIPEntry.Value.Allow() {
 			return FilterDrop, DropUnverified
@@ -192,16 +200,33 @@ func (us *UDPShield) ProcessUDPWithReason(pkt *packet.Packet, rawBuf []byte) (Fi
 	return FilterPass, DropNone
 }
 
-// TrackOutbound records an outbound UDP packet from the server.
-func (us *UDPShield) TrackOutbound(dstIP [4]byte, dstPort uint16) {
-	key := uint64(dstIP[0])<<24 | uint64(dstIP[1])<<16 | uint64(dstIP[2])<<8 | uint64(dstIP[3])
-	key = key<<16 | uint64(dstPort)
+// calculateUnverifiedPPS allows normal UDP handshakes and pairing bursts while
+// keeping unknown peers below the configured aggregate per-IP ceiling.
+func calculateUnverifiedPPS(flowPPS, ipPPS float64) float64 {
+	limit := flowPPS
+	if limit < 120 {
+		limit = 120
+	}
+	if ipPPS > 0 && limit > ipPPS {
+		limit = ipPPS
+	}
+	return limit
+}
+
+func udpConnectionKey(ip uint32, remotePort, localPort uint16) uint64 {
+	return uint64(ip)<<32 | uint64(remotePort)<<16 | uint64(localPort)
+}
+
+// TrackOutbound records the exact remote-IP/remote-port/local-port UDP tuple.
+func (us *UDPShield) TrackOutbound(dstIP [4]byte, dstPort, srcPort uint16) {
+	ip := uint32(dstIP[0])<<24 | uint32(dstIP[1])<<16 | uint32(dstIP[2])<<8 | uint32(dstIP[3])
+	key := udpConnectionKey(ip, dstPort, srcPort)
 	us.outboundSeen.Set(key, time.Now().UnixNano())
 }
 
 // verifyTwoWay checks if the server has responded to this client before.
 func (us *UDPShield) verifyTwoWay(pkt *packet.Packet) bool {
-	key := uint64(pkt.SrcIPUint32())<<16 | uint64(pkt.SrcPort)
+	key := udpConnectionKey(pkt.SrcIPUint32(), pkt.SrcPort, pkt.DstPort)
 	_, exists := us.outboundSeen.Get(key)
 	return exists
 }
@@ -260,8 +285,10 @@ func (us *UDPShield) checkEntropy(rawBuf []byte, offset, length int) bool {
 		return false
 	}
 
-	// Drop if entropy < 0.5 (null flood or repetitive pattern)
-	if entropy < 0.5 && analyzeLen >= 16 {
+	// Short low-entropy keepalives are common in game/voice protocols. Repeated
+	// floods are handled separately by GameShield; entropy becomes decisive only
+	// for a large payload to avoid breaking legitimate pairing heartbeats.
+	if entropy < 0.5 && analyzeLen >= 64 {
 		return false
 	}
 
@@ -338,6 +365,11 @@ func (us *UDPShield) SetRateLimits(flowPPS, flowBPS, ipPPS, subnetPPS float64) {
 		entry.Value.SetLimit(ipPPS)
 		return true
 	})
+	unverifiedPPS := calculateUnverifiedPPS(flowPPS, ipPPS)
+	us.unverifiedBuckets.ForEach(func(_ uint64, entry *datastore.Entry[*datastore.IPBucket]) bool {
+		entry.Value.SetLimit(unverifiedPPS)
+		return true
+	})
 	if subnetPPS > 0 {
 		us.subnetBuckets.ForEach(func(_ uint64, entry *datastore.Entry[*datastore.SubnetBucket]) bool {
 			entry.Value.SetLimit(subnetPPS)
@@ -359,9 +391,13 @@ func (us *UDPShield) AddSignature(name string, port uint16, offset int, magic []
 // SweepFlows cleans up expired flow, IP, subnet, and outbound entries.
 func (us *UDPShield) SweepFlows(ttl time.Duration) (flowsRemoved, ipsRemoved, outboundRemoved int64) {
 	flowsRemoved = us.flowBuckets.Sweep(ttl)
-	ipsRemoved = us.ipBuckets.Sweep(ttl)
+	ipsRemoved = us.ipBuckets.Sweep(ttl) + us.unverifiedBuckets.Sweep(ttl)
 	_ = us.subnetBuckets.Sweep(ttl)
-	outboundRemoved = us.outboundSeen.Sweep(ttl)
+	verificationTTL := ttl
+	if verificationTTL < 5*time.Minute {
+		verificationTTL = 5 * time.Minute
+	}
+	outboundRemoved = us.outboundSeen.Sweep(verificationTTL)
 	if us.GameShield != nil {
 		_ = us.GameShield.Sweep(ttl)
 	}
@@ -375,8 +411,9 @@ func (us *UDPShield) EnforceCapacity(maxEntries int) int64 {
 		maxEntries = 1000
 	}
 	var removed int64
-	removed += us.flowBuckets.EvictOldest(maxEntries * 45 / 100)
+	removed += us.flowBuckets.EvictOldest(maxEntries * 40 / 100)
 	removed += us.ipBuckets.EvictOldest(maxEntries * 15 / 100)
+	removed += us.unverifiedBuckets.EvictOldest(maxEntries * 5 / 100)
 	removed += us.subnetBuckets.EvictOldest(maxEntries * 15 / 100)
 	removed += us.outboundSeen.EvictOldest(maxEntries * 15 / 100)
 	if us.GameShield != nil {
@@ -412,7 +449,7 @@ func (us *UDPShield) GetBlacklist() []string {
 		if entry.Value.IsBlacklisted() {
 			val := entry.Value
 			ip := fmt.Sprintf("%d.%d.%d.%d", byte(key>>24), byte(key>>16), byte(key>>8), byte(key))
-			rem := time.Duration(val.BlacklistUntil - now).Truncate(time.Second)
+			rem := time.Duration(val.BlacklistDeadline() - now).Truncate(time.Second)
 			if rem < 0 {
 				rem = 0
 			}
@@ -426,7 +463,7 @@ func (us *UDPShield) GetBlacklist() []string {
 		if entry.Value.IsBlacklisted() {
 			val := entry.Value
 			subnet := fmt.Sprintf("%d.%d.%d.0/24", byte(key>>16), byte(key>>8), byte(key))
-			rem := time.Duration(val.BlacklistUntil - now).Truncate(time.Second)
+			rem := time.Duration(val.BlacklistDeadline() - now).Truncate(time.Second)
 			if rem < 0 {
 				rem = 0
 			}
@@ -442,7 +479,7 @@ func (us *UDPShield) GetBlacklist() []string {
 			ipVal := uint32(key >> 16)
 			port := uint16(key)
 			ip := fmt.Sprintf("%d.%d.%d.%d:%d", byte(ipVal>>24), byte(ipVal>>16), byte(ipVal>>8), byte(ipVal), port)
-			rem := time.Duration(val.BlacklistUntil - now).Truncate(time.Second)
+			rem := time.Duration(val.BlacklistDeadline() - now).Truncate(time.Second)
 			if rem < 0 {
 				rem = 0
 			}

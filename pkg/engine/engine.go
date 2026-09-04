@@ -124,13 +124,13 @@ func DefaultConfig() EngineConfig {
 		CacheMaxEntries:           300000,
 		CacheTTL:                  30 * time.Second,
 		CacheSweepInterval:        10 * time.Second,
-		UDPFlowPPS:                150,
-		UDPFlowBPS:                2097152, // 2 MB/s
-		UDPPerIPPPS:               500,
-		SubnetPPS:                 1500,
-		BlacklistDur:              5 * time.Minute,
-		TCPMaxConnIP:              100,
-		TCPConnRateIP:             30,
+		UDPFlowPPS:                500,
+		UDPFlowBPS:                5242880, // 5 MiB/s
+		UDPPerIPPPS:               1500,
+		SubnetPPS:                 5000,
+		BlacklistDur:              30 * time.Second,
+		TCPMaxConnIP:              150,
+		TCPConnRateIP:             60,
 		TCPMaxConnSubnet:          500,
 		TCPIdleTimeout:            120,
 		EnableAmplificationFilter: true,
@@ -140,14 +140,14 @@ func DefaultConfig() EngineConfig {
 		WarTriggerPPS:             5000,
 		WarTriggerBPS:             52428800, // 50 MB/s
 		WarCooldown:               60,
-		WarFlowPPS:                40,
-		WarFlowBPS:                524288,
-		WarIPPPS:                  100,
-		WarSubnetPPS:              250,
+		WarFlowPPS:                250,
+		WarFlowBPS:                2097152,
+		WarIPPPS:                  600,
+		WarSubnetPPS:              2500,
 		WarEnableDPI:              true,
 		EntropyMode:               EntropyModeAuto,
 		TwoWayVerify:              true,
-		GeoIPMode:                 GeoIPModeAuto,
+		GeoIPMode:                 GeoIPModeOff,
 		SystemMode:                "AUTO",
 		StrictWhitelist:           true,
 		WhitelistIPs:              []string{"127.0.0.1"},
@@ -399,12 +399,6 @@ func (e *Engine) worker(id int) {
 			continue
 		}
 
-		// Explicit operator exclusions bypass all heuristic/Geo/rate filters while
-		// static blacklist rules above still take precedence.
-		if e.discovery.IsExcluded(pkt.DstPort) {
-			e.inboundHandle.Send(buf[:n], &addr)
-			continue
-		}
 		// Adopt only connections that Windows itself reports as ESTABLISHED. This
 		// preserves sessions opened before the shield without any port-based bypass.
 		if pkt.Protocol == packet.ProtoTCP && pkt.IsACK() && e.discovery.IsEstablishedTCP(pkt.ConnKey()) {
@@ -591,7 +585,7 @@ func (e *Engine) outboundTracker() {
 		e.metrics.OutboundBPS.Add(uint64(n))
 
 		if pkt.Protocol == packet.ProtoUDP {
-			e.udpShield.TrackOutbound(pkt.DstIP, pkt.DstPort)
+			e.udpShield.TrackOutbound(pkt.DstIP, pkt.DstPort, pkt.SrcPort)
 		} else if pkt.Protocol == packet.ProtoTCP && pkt.IsSYN() {
 			e.tcpShield.TrackOutbound(pkt.DstIP, pkt.DstPort, pkt.SrcPort)
 		}

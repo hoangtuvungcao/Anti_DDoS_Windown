@@ -13,8 +13,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Workers != 0 {
 		t.Errorf("Expected default workers 0 (auto-detect), got %d", cfg.Workers)
 	}
-	if cfg.PeaceMode.UDPPPSPerFlow != 120 {
-		t.Errorf("Expected UDP PPS flow limit 120, got %v", cfg.PeaceMode.UDPPPSPerFlow)
+	if cfg.PeaceMode.UDPPPSPerFlow != 500 {
+		t.Errorf("Expected UDP PPS flow limit 500, got %v", cfg.PeaceMode.UDPPPSPerFlow)
 	}
 	if cfg.WarMode.TriggerPPS != 15000 {
 		t.Errorf("Expected War trigger PPS 15000, got %d", cfg.WarMode.TriggerPPS)

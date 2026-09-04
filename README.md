@@ -1,6 +1,6 @@
 <p align="center"><img src="app_256.png" width="132" alt="Biểu tượng WAF-Shield"></p>
 
-# WAF-Shield Enterprise v3.4.1 — Packet Firewall Anti-DDoS cho Windows
+# WAF-Shield Enterprise v3.6.0 — Packet Firewall Anti-DDoS cho Windows
 
 **WAF-Shield Enterprise** là giải pháp tường lửa và trung tâm điều hành bảo mật (SOC) chuyên dụng chống tấn công từ chối dịch vụ (**Anti-DDoS**) hoạt động trực tiếp trên nhân mạng Windows (Windows Server 2012, 2012 R2, 2016, 2019, 2022, 2025 và Windows 10, Windows 11).
 
@@ -10,16 +10,17 @@ Hệ thống chặn gói IPv4 qua WinDivert trước khi lưu lượng tới soc
 
 ---
 
-## 🌟 TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.4.1
+## 🌟 TÍNH NĂNG NỔI BẬT TRÊN PHIÊN BẢN v3.6.0
 
 1. **📊 Giám Sát Lưu Lượng Mạng 2 Chiều Toàn Diện (Bidirectional RX & TX Telemetry)**:
    - Theo dõi song song **Lưu lượng đi vào (Inbound RX)** và **Lưu lượng phản hồi đi ra (Outbound TX)**.
    - Thống kê chi tiết cả số gói tin/giây (**PPS**) và băng thông/giây (**Bps / Mbps / Gbps**).
    - Biểu đồ nhịp sóng 60 giây thời gian thực 3 dải: **Lưu lượng sạch vào (Xanh lá)**, **Lưu lượng phản hồi ra (Xanh Cyan)**, và **Lưu lượng DDoS bị triệt tiêu (Đỏ)**.
 
-2. **🎛️ 4 Chế Độ Phòng Thủ 1 Chạm (Instant Defense Presets)**:
+2. **🎛️ 5 Chế Độ Phòng Thủ 1 Chạm (Instant Defense Presets)**:
+   - **🦖 The Isle Evrima Safe Shield**: Ưu tiên tính liên tục của Steam/EOS, RCON, VoIP và công cụ quản trị; chỉ siết sâu khi bộ phát hiện xác nhận War Mode.
    - **🌟 Full-Stack Hybrid Shield**: Chế độ tối ưu hoàn hảo cho máy chủ chạy **cả Game Server (UDP) và Website / REST API (TCP)** cùng lúc.
-   - **🎮 Universal Game Server Shield**: Tối ưu chuyên sâu cho Game Server thời gian thực (**UDP Realtime**), bật bộ lọc Query Spam DPI và điều phối 120 PPS/luồng.
+   - **🎮 Universal Game Server Shield**: Tối ưu chuyên sâu cho Game Server thời gian thực (**UDP Realtime**), giám sát 500 PPS/luồng ở PEACE và siết còn 250 PPS/luồng khi WAR.
    - **🌐 High-Concurrency Web & API Shield**: Theo dõi trạng thái SYN/ACK, giới hạn tốc độ theo IP/subnet và dọn kết nối treo cho Web Server, REST API và WebSocket.
    - **⚔️ Emergency WAR Defense**: Bật enforcement chống botnet, giữ Geo-IP OFF và bảo toàn phiên TCP/RDP đã xác minh.
 
@@ -106,7 +107,7 @@ Thư mục phát hành `WAF-Shield-Deploy/` đã tích hợp sẵn các file th�
 ### Cách 1: Chạy Trực Tiếp Bằng Giao Diện Console & Web
 * Nhấp đúp chuột vào file **`CHAY_WAF.bat`** (hoặc mở Command Prompt với quyền *Run as Administrator* và gõ `waf-game.exe`).
 * Bảng điều khiển Console sẽ hiển thị đầy đủ thông số PPS, Bps, trạng thái phòng thủ.
-* Mở trình duyệt truy cập: **`http://localhost:8080`** (hoặc `http://IP_VPS:8080`).
+* Mở trình duyệt truy cập: **`http://localhost:8181`**. Chỉ bật truy cập LAN khi đã đặt tài khoản và mật khẩu mạnh.
 
 ### Cách 2: Cài Đặt Chạy Ngầm 24/7 (Windows Service)
 Để WAF tự động chạy ngầm bảo vệ máy chủ ngay khi VPS bật nguồn mà không cần đăng nhập Remote Desktop:
@@ -127,7 +128,7 @@ waf-game.exe --service         # (Nội bộ) Chạy dưới dạng Windows Serv
 
 ---
 
-## 🖥️ GIAO DIỆN WEB SOC DASHBOARD TRỰC TUYẾN (Cổng 8080)
+## 🖥️ GIAO DIỆN WEB SOC DASHBOARD TRỰC TUYẾN (Cổng 8181)
 
 | Tab Chức Năng | Mô Tả Chi Tiết |
 | :--- | :--- |
@@ -199,13 +200,13 @@ Mọi thông số đều có thể điều chỉnh linh hoạt trong file `confi
   // ── 4. TỰ ĐỘNG PHÁT HIỆN PORT ──
   "discovery": {
     "interval_sec": 5,                 // Chu kỳ quét socket hệ thống (giây)
-    "exclude_ports": []                // Port loại trừ không lọc
+    "exclude_ports": []                // Chỉ bỏ kiểm tra cổng đóng; chống DDoS vẫn chạy
   },
 
   // ── 5. GIAO DIỆN WEB DASHBOARD ──
   "web_dashboard": {
     "enabled": true,
-    "port": 8080,
+    "port": 8181,
     "username": "",                    // Để trống = không cần đăng nhập
     "password": "",
     "allow_lan": false                 // true = bind 0.0.0.0, yêu cầu mật khẩu ≥12 ký tự
@@ -257,7 +258,7 @@ Khi phát hiện DDoS, hệ thống sẽ tự động gửi cảnh báo kèm th�
 
 | File | Mô Tả |
 | :--- | :--- |
-| **`waf-game.exe`** | File thực thi chính (Tích hợp Web Server SOC, NDIS Engine, Tường lửa Anti-DDoS) |
+| **`waf-game.exe`** | File thực thi chính (tích hợp Web SOC, WinDivert packet engine và tường lửa Anti-DDoS) |
 | **`WinDivert.dll`** & **`WinDivert64.sys`** | Thành phần bắt và tái chèn gói trên Windows |
 | **`config.json`** | File cấu hình thông số phòng thủ WAF |
 | **`resources/geo/vn.zone`** | Cơ sở dữ liệu IP Việt Nam |
@@ -279,7 +280,7 @@ Profile release dựa trên số liệu khách hàng cung cấp: tổng download
 - AUTO chỉ enforce khi vào WAR. Detector chỉ tính TCP SYN và UDP chưa được server phản hồi; người chơi UDP đã xác thực hai chiều không bị tính là botnet.
 - Ngưỡng WAR là 15.000 PPS hoặc 50 MiB/s inbound; Geo-IP để `OFF` nhằm giữ Steam/EOS, dịch vụ bên thứ ba và người chơi quốc tế.
 - Host firewall không thể cứu đường truyền VNPT Home 300 Mbps khi botnet đã làm đầy đường truyền trước modem. Khi đó cần ISP/business line hoặc scrubbing upstream; router mạnh hơn không tạo thêm băng thông.
-- Phiên TCP đã xác minh được giữ khi chuyển sang WAR bất kể dùng port nào. Nếu IP quản trị là IP tĩnh, vẫn nên thêm chính IP đó vào `whitelist_ips`; không đưa port public vào `exclude_ports` trừ tình huống cứu hộ vì port bị loại trừ sẽ không còn được lọc DDoS.
+- Phiên TCP đã xác minh được giữ khi chuyển sang WAR bất kể dùng port nào. Nếu IP quản trị là IP tĩnh, vẫn nên thêm chính IP đó vào `whitelist_ips`. `exclude_ports` chỉ giúp bỏ kiểm tra cổng đóng khi Windows không phát hiện listener; GeoIP, DPI và giới hạn tốc độ vẫn được áp dụng.
 
 - Giữ `allow_lan: false` nếu dashboard chỉ dùng qua RDP. Nếu bật LAN, **bắt buộc** đặt `username` và mật khẩu riêng mạnh ≥ 12 ký tự; chương trình sẽ từ chối bind LAN khi thiếu thông tin xác thực.
 - Thêm IP quản trị cố định vào `whitelist_ips`, nhưng không whitelist cả dải rộng.

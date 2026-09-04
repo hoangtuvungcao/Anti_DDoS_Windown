@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -9,6 +10,112 @@ import (
 	"waf-game/pkg/packet"
 	"waf-game/pkg/windivert"
 )
+
+func TestTCPShield_ConcurrentConnectionLimitIsAtomic(t *testing.T) {
+	ts := NewTCPShield(nil, 10, 1_000, 1_000, 90)
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(port uint16) {
+			defer wg.Done()
+			pkt := &packet.Packet{
+				Version: 4, IHL: 5, TotalLen: 40, Protocol: packet.ProtoTCP,
+				SrcIP: [4]byte{192, 0, 2, 90}, DstIP: [4]byte{192, 0, 2, 2},
+				SrcPort: port, DstPort: 27015, TCPFlags: packet.TCPFlagSYN,
+			}
+			ts.ProcessTCP(pkt, nil, &windivert.Address{})
+		}(uint16(30000 + i))
+	}
+	wg.Wait()
+
+	if got := ts.GetVerifiedCount(); got != 10 {
+		t.Fatalf("concurrent max-connection limit admitted %d flows, want 10", got)
+	}
+	entry, ok := ts.connPerIP.Get(uint64(0xc000025a))
+	if !ok || entry.Value.Load() != 10 {
+		t.Fatalf("atomic IP counter mismatch: found=%v value=%v", ok, func() int32 {
+			if !ok {
+				return -1
+			}
+			return entry.Value.Load()
+		}())
+	}
+}
+
+func TestTCPShield_ConcurrentDuplicateSYNCountsOnce(t *testing.T) {
+	ts := NewTCPShield(nil, 100, 1_000, 1_000, 90)
+	pkt := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 40, Protocol: packet.ProtoTCP,
+		SrcIP: [4]byte{192, 0, 2, 92}, DstIP: [4]byte{192, 0, 2, 2},
+		SrcPort: 32000, DstPort: 27015, TCPFlags: packet.TCPFlagSYN,
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ts.ProcessTCP(pkt, nil, &windivert.Address{})
+		}()
+	}
+	wg.Wait()
+	entry, ok := ts.connPerIP.Get(pkt.IPFlowKey())
+	if !ok || entry.Value.Load() != 1 || ts.GetVerifiedCount() != 1 {
+		t.Fatalf("duplicate SYN accounting mismatch: found=%v counter=%v flows=%d", ok, func() int32 {
+			if !ok {
+				return -1
+			}
+			return entry.Value.Load()
+		}(), ts.GetVerifiedCount())
+	}
+}
+
+func TestTCPShield_OutboundFlowDoesNotDecrementInboundCounter(t *testing.T) {
+	ts := NewTCPShield(nil, 100, 1_000, 1_000, 90)
+	clientIP := [4]byte{198, 51, 100, 93}
+	inbound := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 40, Protocol: packet.ProtoTCP,
+		SrcIP: clientIP, DstIP: [4]byte{192, 0, 2, 2},
+		SrcPort: 33000, DstPort: 27015, TCPFlags: packet.TCPFlagSYN,
+	}
+	ts.ProcessTCP(inbound, nil, &windivert.Address{})
+	ts.TrackOutbound(clientIP, 443, 51000)
+	outboundReplyFIN := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 40, Protocol: packet.ProtoTCP,
+		SrcIP: clientIP, DstIP: [4]byte{192, 0, 2, 2},
+		SrcPort: 443, DstPort: 51000, TCPFlags: packet.TCPFlagFIN | packet.TCPFlagACK,
+	}
+	ts.ProcessTCP(outboundReplyFIN, nil, &windivert.Address{})
+	entry, ok := ts.connPerIP.Get(inbound.IPFlowKey())
+	if !ok || entry.Value.Load() != 1 {
+		t.Fatalf("outbound flow corrupted inbound connection count: found=%v", ok)
+	}
+}
+
+func TestTCPShield_UnsolicitedSYNACKIsNotTrusted(t *testing.T) {
+	ts := NewTCPShield(nil, 100, 100, 500, 90)
+	ts.SetStrict(true)
+	pkt := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 40, Protocol: packet.ProtoTCP,
+		SrcIP: [4]byte{198, 51, 100, 91}, DstIP: [4]byte{192, 0, 2, 2},
+		SrcPort: 443, DstPort: 51000,
+		TCPFlags: packet.TCPFlagSYN | packet.TCPFlagACK,
+	}
+
+	if got := ts.ProcessTCP(pkt, nil, &windivert.Address{}); got != FilterPass {
+		t.Fatalf("first SYN-ACK should reach the Windows TCP stack: %v", got)
+	}
+	if ts.IsVerified(pkt.ConnKey()) {
+		t.Fatal("unsolicited SYN-ACK was promoted to a trusted connection")
+	}
+	for i := 1; i < 30; i++ {
+		if got := ts.ProcessTCP(pkt, nil, &windivert.Address{}); got != FilterPass {
+			t.Fatalf("SYN-ACK rate limiter dropped packet %d too early: %v", i+1, got)
+		}
+	}
+	if got := ts.ProcessTCP(pkt, nil, &windivert.Address{}); got != FilterDrop {
+		t.Fatalf("SYN-ACK flood was not rate-limited: %v", got)
+	}
+}
 
 func TestTCPShield_KernelEstablishedConnectionSurvivesStrictMode(t *testing.T) {
 	ts := NewTCPShield(nil, 150, 60, 500, 1)

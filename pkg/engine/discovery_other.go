@@ -47,5 +47,6 @@ func (p *PortDiscovery) AddExcludePort(port uint16) {
 	p.exclude[port] = true
 	p.excludeMu.Unlock()
 }
-func (p *PortDiscovery) Start() {}
-func (p *PortDiscovery) Stop()  {}
+func (p *PortDiscovery) Refresh() {}
+func (p *PortDiscovery) Start()   {}
+func (p *PortDiscovery) Stop()    {}

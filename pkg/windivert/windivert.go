@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
@@ -71,8 +72,7 @@ func (a *Address) SetOutbound(outbound bool) {
 // Handle wraps a WinDivert handle
 type Handle struct {
 	handle uintptr
-	mu     sync.Mutex
-	closed bool
+	closed atomic.Bool
 }
 
 var (
@@ -149,7 +149,7 @@ func Open(filter string, layer uint32, priority int16, flags uint64) (*Handle, e
 
 // Recv receives a single captured packet.
 func (h *Handle) Recv(buf []byte, addr *Address) (uint, error) {
-	if h.closed {
+	if h.closed.Load() {
 		return 0, fmt.Errorf("handle is closed")
 	}
 
@@ -170,7 +170,7 @@ func (h *Handle) Recv(buf []byte, addr *Address) (uint, error) {
 
 // Send injects a packet back into the network stack.
 func (h *Handle) Send(buf []byte, addr *Address) (uint, error) {
-	if h.closed {
+	if h.closed.Load() {
 		return 0, fmt.Errorf("handle is closed")
 	}
 
@@ -218,13 +218,9 @@ func (h *Handle) SetParam(param int, value uint64) error {
 
 // Close closes the WinDivert handle and releases the driver.
 func (h *Handle) Close() error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.closed {
+	if !h.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	h.closed = true
 
 	r1, _, e1 := procClose.Call(h.handle)
 	runtime.SetFinalizer(h, nil)

@@ -217,10 +217,10 @@ function initSimulator() {
     renderSim();
 }
 
-function switchSimAttack(type) {
+function switchSimAttack(type, button) {
     currentAttackType = type;
     document.querySelectorAll('.sim-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+    if (button) button.classList.add('active');
     showToast(`Đã chuyển luồng giả lập: ${type}`, 'info');
 }
 
@@ -278,9 +278,9 @@ function initConfigGenerator() {
 
 function updateGeneratedConfig() {
     const preset = document.getElementById('cfgPreset') ? document.getElementById('cfgPreset').value : 'THE_ISLE';
-    const webPort = document.getElementById('cfgWebPort') ? parseInt(document.getElementById('cfgWebPort').value) || 8080 : 8080;
+    const webPort = document.getElementById('cfgWebPort') ? parseInt(document.getElementById('cfgWebPort').value) || 8181 : 8181;
     const webPass = document.getElementById('cfgWebPass') ? document.getElementById('cfgWebPass').value : '';
-    const flowPPS = document.getElementById('cfgFlowPPS') ? parseInt(document.getElementById('cfgFlowPPS').value) || 120 : 120;
+    const flowPPS = document.getElementById('cfgFlowPPS') ? parseInt(document.getElementById('cfgFlowPPS').value) || 500 : 500;
     const geoMode = document.getElementById('cfgGeoMode') ? document.getElementById('cfgGeoMode').value : 'AUTO';
 
     const isTheIsle = preset === 'THE_ISLE';

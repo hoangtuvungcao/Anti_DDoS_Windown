@@ -63,6 +63,36 @@ func (sm *ShardedMap[V]) Get(key uint64) (*Entry[V], bool) {
 	return entry, ok
 }
 
+// GetValue returns a copy of a value while holding the shard read lock. Use it
+// for non-pointer values that may also be replaced through Set concurrently.
+func (sm *ShardedMap[V]) GetValue(key uint64) (V, bool) {
+	var zero V
+	s := sm.getShard(key)
+	s.mu.RLock()
+	entry, ok := s.items[key]
+	if !ok {
+		s.mu.RUnlock()
+		return zero, false
+	}
+	value := entry.Value
+	s.mu.RUnlock()
+	return value, true
+}
+
+// UpdateExisting atomically replaces an existing value under its shard lock.
+// It prevents lost updates when multiple packet workers touch the same flow.
+func (sm *ShardedMap[V]) UpdateExisting(key uint64, update func(V) V) bool {
+	s := sm.getShard(key)
+	s.mu.Lock()
+	entry, ok := s.items[key]
+	if ok {
+		entry.Value = update(entry.Value)
+		atomic.StoreInt64(&entry.LastSeen, time.Now().UnixNano())
+	}
+	s.mu.Unlock()
+	return ok
+}
+
 // GetOrCreate retrieves existing entry or creates a new one with initFn.
 // Returns the entry and true if it was newly created.
 func (sm *ShardedMap[V]) GetOrCreate(key uint64, initFn func() V) (*Entry[V], bool) {
@@ -106,7 +136,7 @@ func (sm *ShardedMap[V]) Set(key uint64, value V) {
 	existing, ok := s.items[key]
 	if ok {
 		existing.Value = value
-		existing.LastSeen = now
+		atomic.StoreInt64(&existing.LastSeen, now)
 	} else {
 		s.items[key] = &Entry[V]{Value: value, LastSeen: now}
 		sm.count.Add(1)
@@ -126,15 +156,18 @@ func (sm *ShardedMap[V]) Touch(key uint64) {
 	}
 }
 
-// Delete removes a key from the map.
-func (sm *ShardedMap[V]) Delete(key uint64) {
+// Delete removes a key from the map and reports whether it existed.
+func (sm *ShardedMap[V]) Delete(key uint64) bool {
 	s := sm.getShard(key)
 	s.mu.Lock()
+	deleted := false
 	if _, ok := s.items[key]; ok {
 		delete(s.items, key)
 		sm.count.Add(-1)
+		deleted = true
 	}
 	s.mu.Unlock()
+	return deleted
 }
 
 // Count returns the total number of entries across all shards.

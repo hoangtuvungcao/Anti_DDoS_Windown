@@ -78,6 +78,10 @@ type Packet struct {
 // Parse parses a raw IP packet from buf into pkt.
 // Zero-allocation: pkt must be pre-allocated (use sync.Pool).
 func Parse(buf []byte, pkt *Packet) error {
+	// Packet objects are reused by the engine. Clear fields from the previous
+	// protocol so fragments/ICMP packets never inherit stale ports or TCP flags.
+	*pkt = Packet{}
+
 	// Minimum IPv4 header: 20 bytes
 	if len(buf) < 20 {
 		return ErrTooShort
@@ -114,14 +118,24 @@ func Parse(buf []byte, pkt *Packet) error {
 	copy(pkt.SrcIP[:], buf[12:16])
 	copy(pkt.DstIP[:], buf[16:20])
 
-	// Check for truncation
+	if int(pkt.TotalLen) < pkt.IPHeaderLen {
+		return ErrTooShort
+	}
+
+	// Never normalize malformed/truncated packets into apparently valid ones.
 	if int(pkt.TotalLen) > len(buf) {
-		// Allow processing with available data, just note truncation
-		pkt.TotalLen = uint16(len(buf))
+		return ErrTruncated
 	}
 
 	// Parse transport layer header based on protocol
 	transportStart := pkt.IPHeaderLen
+	if pkt.FragOffset > 0 {
+		// Non-initial fragments do not contain a transport header. Keep only the
+		// available IP payload metadata so the engine can apply fragment policy.
+		pkt.PayloadOffset = transportStart
+		pkt.PayloadLen = int(pkt.TotalLen) - transportStart
+		return nil
+	}
 
 	switch pkt.Protocol {
 	case ProtoTCP:
@@ -204,13 +218,21 @@ func parseUDP(buf []byte, offset int, pkt *Packet) error {
 	pkt.SrcPort = binary.BigEndian.Uint16(buf[offset : offset+2])
 	pkt.DstPort = binary.BigEndian.Uint16(buf[offset+2 : offset+4])
 	pkt.UDPLength = binary.BigEndian.Uint16(buf[offset+4 : offset+6])
-	if pkt.UDPLength < 8 || offset+int(pkt.UDPLength) > int(pkt.TotalLen) {
+	if pkt.UDPLength < 8 {
+		return ErrBadUDPLength
+	}
+	udpEnd := offset + int(pkt.UDPLength)
+	if udpEnd > int(pkt.TotalLen) && !pkt.MF() {
 		return ErrBadUDPLength
 	}
 
 	pkt.TransHeaderLen = 8
 	pkt.PayloadOffset = offset + 8
 	pkt.PayloadLen = int(pkt.UDPLength) - 8
+	availablePayload := int(pkt.TotalLen) - pkt.PayloadOffset
+	if pkt.PayloadLen > availablePayload {
+		pkt.PayloadLen = availablePayload
+	}
 	if pkt.PayloadLen < 0 {
 		pkt.PayloadLen = 0
 	}

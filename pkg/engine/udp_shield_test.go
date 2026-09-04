@@ -1,11 +1,103 @@
 package engine
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"waf-game/pkg/packet"
 )
+
+func TestUDPShield_UnverifiedGateDoesNotDoubleChargeAggregateIP(t *testing.T) {
+	us := NewUDPShield(250, 1_000_000, 600, 1_000, time.Minute, nil)
+	us.SetTwoWay(true)
+	us.SetStrict(true)
+	pkt := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 28, Protocol: packet.ProtoUDP,
+		SrcIP: [4]byte{203, 0, 113, 20}, DstIP: [4]byte{192, 0, 2, 10},
+		SrcPort: 42000, DstPort: 27015,
+	}
+
+	// A normal pairing burst below the configured WAR flow/IP limits must pass.
+	// This regresses the old shared 60-PPS bucket, which charged each packet
+	// once at the verification gate and again at the aggregate IP limiter.
+	for i := 0; i < 100; i++ {
+		result, reason := us.ProcessUDPWithReason(pkt, make([]byte, 28))
+		if result != FilterPass {
+			t.Fatalf("pairing burst packet %d dropped: %v", i+1, reason)
+		}
+	}
+	if us.unverifiedBuckets.Count() != 1 || us.ipBuckets.Count() != 1 {
+		t.Fatalf("expected independent verification and aggregate buckets, got unverified=%d ip=%d",
+			us.unverifiedBuckets.Count(), us.ipBuckets.Count())
+	}
+}
+
+func TestUDPShield_VerifiedPeerBypassesOnlyUnverifiedGate(t *testing.T) {
+	us := NewUDPShield(250, 1_000_000, 600, 1_000, time.Minute, nil)
+	us.SetTwoWay(true)
+	clientIP := [4]byte{198, 51, 100, 44}
+	const clientPort uint16 = 45678
+	const serverPort uint16 = 27015
+	us.TrackOutbound(clientIP, clientPort, serverPort)
+
+	pkt := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 28, Protocol: packet.ProtoUDP,
+		SrcIP: clientIP, DstIP: [4]byte{192, 0, 2, 10},
+		SrcPort: clientPort, DstPort: serverPort,
+	}
+	for i := 0; i < 100; i++ {
+		result, reason := us.ProcessUDPWithReason(pkt, make([]byte, 28))
+		if result != FilterPass {
+			t.Fatalf("verified pairing packet %d dropped: %v", i+1, reason)
+		}
+	}
+	if us.unverifiedBuckets.Count() != 0 {
+		t.Fatalf("verified peer unexpectedly consumed unverified state")
+	}
+}
+
+func TestUDPShield_TwoWayAssociationSurvivesShortFlowSweep(t *testing.T) {
+	us := NewUDPShield(250, 1_000_000, 600, 1_000, time.Minute, nil)
+	clientIP := [4]byte{198, 51, 100, 45}
+	const clientPort uint16 = 45679
+	const serverPort uint16 = 27015
+	us.TrackOutbound(clientIP, clientPort, serverPort)
+	key := udpConnectionKey(0xc633642d, clientPort, serverPort)
+	entry, ok := us.outboundSeen.Get(key)
+	if !ok {
+		t.Fatal("outbound association was not recorded")
+	}
+
+	atomic.StoreInt64(&entry.LastSeen, time.Now().Add(-2*time.Minute).UnixNano())
+	us.SweepFlows(30 * time.Second)
+	if _, ok := us.outboundSeen.Get(key); !ok {
+		t.Fatal("active two-way association expired with the short flow-cache TTL")
+	}
+
+	atomic.StoreInt64(&entry.LastSeen, time.Now().Add(-6*time.Minute).UnixNano())
+	us.SweepFlows(30 * time.Second)
+	if _, ok := us.outboundSeen.Get(key); ok {
+		t.Fatal("stale two-way association was not expired")
+	}
+}
+
+func TestUDPShield_TwoWayVerificationIsExactLocalPortTuple(t *testing.T) {
+	us := NewUDPShield(250, 1_000_000, 600, 1_000, time.Minute, nil)
+	clientIP := [4]byte{198, 51, 100, 46}
+	const clientPort uint16 = 45680
+	us.TrackOutbound(clientIP, clientPort, 27015)
+
+	legitimate := &packet.Packet{SrcIP: clientIP, SrcPort: clientPort, DstPort: 27015}
+	if !us.verifyTwoWay(legitimate) {
+		t.Fatal("exact UDP response tuple was not verified")
+	}
+	crossPort := *legitimate
+	crossPort.DstPort = 8181
+	if us.verifyTwoWay(&crossPort) {
+		t.Fatal("UDP trust leaked from the game port to a different local port")
+	}
+}
 
 func TestUDPShield_RateLimiting(t *testing.T) {
 	// 10 PPS per-flow, 1000 BPS per-flow, 20 PPS per-IP, 50 PPS per-Subnet
@@ -205,6 +297,20 @@ func TestUDPShield_Entropy(t *testing.T) {
 	res = us.ProcessUDP(pktNormal, pktLowBytes(normalPayload))
 	if res != FilterPass {
 		t.Errorf("Expected normal-entropy packet to pass, got %v", res)
+	}
+}
+
+func TestUDPShield_EntropyAllowsShortLowEntropyKeepalive(t *testing.T) {
+	us := NewUDPShield(100, 10000, 200, 500, 5*time.Second, nil)
+	us.SetEntropy(true)
+	payload := make([]byte, 16)
+	pkt := &packet.Packet{
+		Version: 4, IHL: 5, TotalLen: 44, Protocol: packet.ProtoUDP,
+		SrcIP: [4]byte{192, 0, 2, 70}, DstIP: [4]byte{192, 0, 2, 2},
+		SrcPort: 45000, DstPort: 27015, PayloadOffset: 28, PayloadLen: len(payload),
+	}
+	if got := us.ProcessUDP(pkt, pktLowBytes(payload)); got != FilterPass {
+		t.Fatalf("short low-entropy keepalive was dropped: %v", got)
 	}
 }
 

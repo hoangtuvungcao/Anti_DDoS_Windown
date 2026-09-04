@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"waf-game/pkg/datastore"
@@ -25,10 +26,10 @@ type TCPShield struct {
 	verified *datastore.ShardedMap[TCPConnState]
 
 	// Per-IP active connection counter
-	connPerIP *datastore.ShardedMap[int32]
+	connPerIP *datastore.ShardedMap[*atomic.Int32]
 
 	// Per-Subnet (/24) active connection counter
-	connPerSubnet *datastore.ShardedMap[int32]
+	connPerSubnet *datastore.ShardedMap[*atomic.Int32]
 
 	// Rate limiters
 	synBuckets        *datastore.ShardedMap[*datastore.IPBucket]
@@ -65,6 +66,7 @@ type TCPConnState struct {
 	BytesTransferred uint64 // Total payload bytes transferred
 	HasPayload       bool   // Whether legitimate application data was sent
 	IsHalfOpen       bool   // Waiting for client ACK to complete handshake
+	Counted          bool   // Included in inbound per-IP/subnet connection counters
 }
 
 // NewTCPShield creates a new TCP Shield module.
@@ -88,8 +90,8 @@ func NewTCPShield(handle *windivert.Handle, maxConnPerIP, connRatePerIP, maxConn
 
 	return &TCPShield{
 		verified:          datastore.NewShardedMap[TCPConnState](150000),
-		connPerIP:         datastore.NewShardedMap[int32](50000),
-		connPerSubnet:     datastore.NewShardedMap[int32](20000),
+		connPerIP:         datastore.NewShardedMap[*atomic.Int32](50000),
+		connPerSubnet:     datastore.NewShardedMap[*atomic.Int32](20000),
 		synBuckets:        datastore.NewShardedMap[*datastore.IPBucket](50000),
 		synSubnetBuckets:  datastore.NewShardedMap[*datastore.SubnetBucket](20000),
 		connRatePerIP:     datastore.NewShardedMap[*datastore.IPBucket](50000),
@@ -140,22 +142,21 @@ func (ts *TCPShield) ObserveTCP(pkt *packet.Packet, kernelEstablished bool) {
 	}
 	connKey := pkt.ConnKey()
 	if pkt.IsRST() || pkt.IsFIN() {
-		if _, exists := ts.verified.Get(connKey); exists {
-			ts.verified.Delete(connKey)
-			ts.decrementConnectionCounters(pkt.IPFlowKey(), uint64(pkt.SrcIPUint32()>>8))
-		}
+		ts.deleteConnection(connKey)
 		return
 	}
 
 	now := time.Now().UnixNano()
 	if pkt.IsSYN() && !pkt.IsSYNACK() {
-		_, existed := ts.verified.Get(connKey)
-		ts.verified.Set(connKey, TCPConnState{
-			VerifiedAt:   now,
-			LastActivity: now,
-			IsHalfOpen:   true,
+		_, created := ts.verified.GetOrCreate(connKey, func() TCPConnState {
+			return TCPConnState{
+				VerifiedAt:   now,
+				LastActivity: now,
+				IsHalfOpen:   true,
+				Counted:      true,
+			}
 		})
-		if !existed {
+		if created {
 			ts.incrementConnectionCounters(pkt.IPFlowKey(), uint64(pkt.SrcIPUint32()>>8))
 		}
 		return
@@ -164,50 +165,85 @@ func (ts *TCPShield) ObserveTCP(pkt *packet.Packet, kernelEstablished bool) {
 		return
 	}
 
-	entry, exists := ts.verified.Get(connKey)
+	_, exists := ts.verified.GetValue(connKey)
 	if !exists && !kernelEstablished {
 		// Never teach arbitrary out-of-state ACK floods as trusted traffic. Only
 		// flows confirmed by Windows may predate shield startup.
 		return
 	}
-	state := TCPConnState{
+	newState := TCPConnState{
 		VerifiedAt:       now,
 		HandshakeAt:      now,
 		LastActivity:     now,
 		BytesTransferred: uint64(pkt.PayloadLen),
 		HasPayload:       pkt.PayloadLen > 0,
+		Counted:          true,
 	}
 	if exists {
-		state = entry.Value
-		state.LastActivity = now
-		state.IsHalfOpen = false
-		if state.HandshakeAt == 0 {
-			state.HandshakeAt = now
-		}
-		if pkt.PayloadLen > 0 {
-			state.HasPayload = true
-			state.BytesTransferred += uint64(pkt.PayloadLen)
-		}
+		ts.verified.UpdateExisting(connKey, func(state TCPConnState) TCPConnState {
+			state.LastActivity = now
+			state.IsHalfOpen = false
+			if state.HandshakeAt == 0 {
+				state.HandshakeAt = now
+			}
+			if pkt.PayloadLen > 0 {
+				state.HasPayload = true
+				state.BytesTransferred += uint64(pkt.PayloadLen)
+			}
+			return state
+		})
+		return
 	}
-	ts.verified.Set(connKey, state)
-	if !exists {
-		ts.incrementConnectionCounters(pkt.IPFlowKey(), uint64(pkt.SrcIPUint32()>>8))
-	}
+	ts.verified.Set(connKey, newState)
+	ts.incrementConnectionCounters(pkt.IPFlowKey(), uint64(pkt.SrcIPUint32()>>8))
 }
 
 func (ts *TCPShield) incrementConnectionCounters(ipKey, subnetKey uint64) {
-	connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() int32 { return 0 })
-	ts.connPerIP.Set(ipKey, connEntry.Value+1)
-	subnetEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() int32 { return 0 })
-	ts.connPerSubnet.Set(subnetKey, subnetEntry.Value+1)
+	connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() *atomic.Int32 { return &atomic.Int32{} })
+	connEntry.Value.Add(1)
+	subnetEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() *atomic.Int32 { return &atomic.Int32{} })
+	subnetEntry.Value.Add(1)
 }
 
 func (ts *TCPShield) decrementConnectionCounters(ipKey, subnetKey uint64) {
-	if count, ok := ts.connPerIP.Get(ipKey); ok && count.Value > 0 {
-		ts.connPerIP.Set(ipKey, count.Value-1)
+	if count, ok := ts.connPerIP.Get(ipKey); ok {
+		decrementNonNegative(count.Value)
 	}
-	if count, ok := ts.connPerSubnet.Get(subnetKey); ok && count.Value > 0 {
-		ts.connPerSubnet.Set(subnetKey, count.Value-1)
+	if count, ok := ts.connPerSubnet.Get(subnetKey); ok {
+		decrementNonNegative(count.Value)
+	}
+}
+
+func (ts *TCPShield) deleteConnection(connKey uint64) bool {
+	state, ok := ts.verified.GetValue(connKey)
+	if !ok || !ts.verified.Delete(connKey) {
+		return false
+	}
+	if state.Counted {
+		ipKey := uint64(uint32(connKey >> 32))
+		ts.decrementConnectionCounters(ipKey, uint64(uint32(connKey>>32)>>8))
+	}
+	return true
+}
+
+func decrementNonNegative(counter *atomic.Int32) {
+	for {
+		current := counter.Load()
+		if current <= 0 || counter.CompareAndSwap(current, current-1) {
+			return
+		}
+	}
+}
+
+func reserveConnection(counter *atomic.Int32, limit int32) bool {
+	for {
+		current := counter.Load()
+		if current >= limit {
+			return false
+		}
+		if counter.CompareAndSwap(current, current+1) {
+			return true
+		}
 	}
 }
 
@@ -235,28 +271,23 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 	// Established traffic always wins over dynamic flood blacklists. Windows
 	// still validates TCP sequence/state after reinjection, while the shield keeps
 	// rate-limiting new SYNs from the same address.
-	if entry, ok := ts.verified.Get(connKey); ok {
-		state := entry.Value
+	if _, ok := ts.verified.GetValue(connKey); ok {
 		if pkt.IsRST() || pkt.IsFIN() {
-			ts.verified.Delete(connKey)
-			if count, found := ts.connPerIP.Get(ipKey); found && count.Value > 0 {
-				ts.connPerIP.Set(ipKey, count.Value-1)
-			}
-			if count, found := ts.connPerSubnet.Get(subnetKey); found && count.Value > 0 {
-				ts.connPerSubnet.Set(subnetKey, count.Value-1)
-			}
+			ts.deleteConnection(connKey)
 			return FilterPass
 		}
-		state.LastActivity = now
-		if state.IsHalfOpen && pkt.IsACK() {
-			state.IsHalfOpen = false
-			state.HandshakeAt = now
-		}
-		if pkt.PayloadLen > 0 {
-			state.HasPayload = true
-			state.BytesTransferred += uint64(pkt.PayloadLen)
-		}
-		ts.verified.Set(connKey, state)
+		ts.verified.UpdateExisting(connKey, func(state TCPConnState) TCPConnState {
+			state.LastActivity = now
+			if state.IsHalfOpen && pkt.IsACK() {
+				state.IsHalfOpen = false
+				state.HandshakeAt = now
+			}
+			if pkt.PayloadLen > 0 {
+				state.HasPayload = true
+				state.BytesTransferred += uint64(pkt.PayloadLen)
+			}
+			return state
+		})
 		return FilterPass
 	}
 
@@ -284,15 +315,21 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		return FilterPass
 	}
 
-	// 4. Handle Inbound SYN-ACK Responses (Outbound Client Connections: UltraViewer, IslePilot, HTTPS)
+	// 4. Handle an untracked inbound SYN-ACK. A legitimate outbound connection
+	// is registered by the outbound sniffer before its reply arrives and takes
+	// the verified fast path above. Never promote an unsolicited SYN-ACK to a
+	// trusted connection: botnets can forge one without completing a handshake.
 	if pkt.IsSYNACK() {
-		ts.verified.Set(connKey, TCPConnState{
-			VerifiedAt:   now,
-			HandshakeAt:  now,
-			LastActivity: now,
-			HasPayload:   true,
-			IsHalfOpen:   false,
+		bucket, _ := ts.outOfStateBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+			limit := float64(60)
+			if strict {
+				limit = 30
+			}
+			return datastore.NewIPBucket(limit)
 		})
+		if !bucket.Value.Allow() {
+			return FilterDrop
+		}
 		return FilterPass
 	}
 
@@ -332,28 +369,34 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 		}
 
 		// D. Check Max Concurrent Connections per IP
-		connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() int32 { return 0 })
-		if connEntry.Value >= maxConnPerIP {
+		connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() *atomic.Int32 { return &atomic.Int32{} })
+		if !reserveConnection(connEntry.Value, maxConnPerIP) {
 			return FilterDrop
 		}
 
 		// E. Check Max Concurrent Connections per Subnet /24
-		subnetConnEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() int32 { return 0 })
-		if subnetConnEntry.Value >= maxConnPerSubnet {
+		subnetConnEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() *atomic.Int32 { return &atomic.Int32{} })
+		if !reserveConnection(subnetConnEntry.Value, maxConnPerSubnet) {
+			decrementNonNegative(connEntry.Value)
 			return FilterDrop
 		}
 
 		// Register connection as Half-Open
-		ts.verified.Set(connKey, TCPConnState{
-			VerifiedAt:   now,
-			LastActivity: now,
-			HasPayload:   false,
-			IsHalfOpen:   true,
+		_, created := ts.verified.GetOrCreate(connKey, func() TCPConnState {
+			return TCPConnState{
+				VerifiedAt:   now,
+				LastActivity: now,
+				HasPayload:   false,
+				IsHalfOpen:   true,
+				Counted:      true,
+			}
 		})
-		// Bug fix: direct Value++ on shared entry is a data race — use locked Set()
-		ts.connPerIP.Set(ipKey, connEntry.Value+1)
-		ts.connPerSubnet.Set(subnetKey, subnetConnEntry.Value+1)
-
+		if !created {
+			// Another worker admitted the same tuple between the fast-path lookup
+			// and reservation. Roll back both reservations to keep counts exact.
+			decrementNonNegative(connEntry.Value)
+			decrementNonNegative(subnetConnEntry.Value)
+		}
 		return FilterPass
 	}
 
@@ -363,19 +406,20 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 	if pkt.IsACK() && pkt.AckNum > 0 {
 		cookieCandidate := pkt.AckNum - 1
 		if ts.ValidateSYNCookie(pkt.SrcIP, pkt.DstIP, pkt.SrcPort, pkt.DstPort, cookieCandidate) {
-			ts.verified.Set(connKey, TCPConnState{
-				VerifiedAt:       now,
-				HandshakeAt:      now,
-				LastActivity:     now,
-				BytesTransferred: uint64(pkt.PayloadLen),
-				HasPayload:       pkt.PayloadLen > 0,
-				IsHalfOpen:       false,
+			_, created := ts.verified.GetOrCreate(connKey, func() TCPConnState {
+				return TCPConnState{
+					VerifiedAt:       now,
+					HandshakeAt:      now,
+					LastActivity:     now,
+					BytesTransferred: uint64(pkt.PayloadLen),
+					HasPayload:       pkt.PayloadLen > 0,
+					IsHalfOpen:       false,
+					Counted:          true,
+				}
 			})
-			// Bug fix: use locked Set() to avoid data race on shared counter
-			connEntry, _ := ts.connPerIP.GetOrCreate(ipKey, func() int32 { return 0 })
-			ts.connPerIP.Set(ipKey, connEntry.Value+1)
-			subnetConnEntry, _ := ts.connPerSubnet.GetOrCreate(subnetKey, func() int32 { return 0 })
-			ts.connPerSubnet.Set(subnetKey, subnetConnEntry.Value+1)
+			if created {
+				ts.incrementConnectionCounters(ipKey, subnetKey)
+			}
 			return FilterPass
 		}
 	}
@@ -393,14 +437,20 @@ func (ts *TCPShield) ProcessTCP(pkt *packet.Packet, rawBuf []byte, addr *windive
 			return FilterDrop
 		}
 
-		ts.verified.Set(connKey, TCPConnState{
-			VerifiedAt:       now,
-			HandshakeAt:      now,
-			LastActivity:     now,
-			BytesTransferred: uint64(pkt.PayloadLen),
-			HasPayload:       true,
-			IsHalfOpen:       false,
+		_, created := ts.verified.GetOrCreate(connKey, func() TCPConnState {
+			return TCPConnState{
+				VerifiedAt:       now,
+				HandshakeAt:      now,
+				LastActivity:     now,
+				BytesTransferred: uint64(pkt.PayloadLen),
+				HasPayload:       true,
+				IsHalfOpen:       false,
+				Counted:          true,
+			}
 		})
+		if created {
+			ts.incrementConnectionCounters(ipKey, subnetKey)
+		}
 		return FilterPass
 	}
 
@@ -431,16 +481,14 @@ func (ts *TCPShield) ReapIdleConnections() int64 {
 	ts.mu.RUnlock()
 	idleCutoff := time.Duration(idleTimeoutSec) * time.Second
 	return ts.verified.SweepWithCallback(idleCutoff, func(key uint64, state TCPConnState) {
+		if !state.Counted {
+			return
+		}
 		ipVal := uint32(key >> 32)
 		ipKey := uint64(ipVal)
 		subnetKey := uint64(ipVal >> 8)
 
-		if cEntry, ok := ts.connPerIP.Get(ipKey); ok && cEntry.Value > 0 {
-			ts.connPerIP.Set(ipKey, cEntry.Value-1)
-		}
-		if sEntry, ok := ts.connPerSubnet.Get(subnetKey); ok && sEntry.Value > 0 {
-			ts.connPerSubnet.Set(subnetKey, sEntry.Value-1)
-		}
+		ts.decrementConnectionCounters(ipKey, subnetKey)
 	})
 }
 
@@ -449,7 +497,10 @@ func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 	now := time.Now().UnixNano()
 	halfOpenCutoff := now - int64(30*time.Second)     // 30s timeout for completing SYN handshake
 	zeroPayloadCutoff := now - int64(120*time.Second) // 120s timeout for established connection to send payload
-	if ts.strict {
+	ts.mu.RLock()
+	strict := ts.strict
+	ts.mu.RUnlock()
+	if strict {
 		zeroPayloadCutoff = now - int64(45*time.Second)
 	}
 
@@ -465,17 +516,7 @@ func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 	})
 
 	for _, key := range toDelete {
-		ts.verified.Delete(key)
-		ipVal := uint32(key >> 32)
-		ipKey := uint64(ipVal)
-		subnetKey := uint64(ipVal >> 8)
-
-		if cEntry, ok := ts.connPerIP.Get(ipKey); ok && cEntry.Value > 0 {
-			ts.connPerIP.Set(ipKey, cEntry.Value-1)
-		}
-		if sEntry, ok := ts.connPerSubnet.Get(subnetKey); ok && sEntry.Value > 0 {
-			ts.connPerSubnet.Set(subnetKey, sEntry.Value-1)
-		}
+		ts.deleteConnection(key)
 	}
 
 	return int64(len(toDelete))
@@ -485,7 +526,10 @@ func (ts *TCPShield) ReapHalfOpenAndZeroPayload() int64 {
 func (ts *TCPShield) ReapSlowlorisConnections() int64 {
 	now := time.Now().UnixNano()
 	slowlorisCutoff := now - int64(120*time.Second) // 120s threshold in peace mode
-	if ts.strict {
+	ts.mu.RLock()
+	strict := ts.strict
+	ts.mu.RUnlock()
+	if strict {
 		slowlorisCutoff = now - int64(30*time.Second) // 30s threshold under War mode DDoS
 	}
 
@@ -500,16 +544,7 @@ func (ts *TCPShield) ReapSlowlorisConnections() int64 {
 	})
 
 	for _, key := range toDelete {
-		ts.verified.Delete(key)
-		ipVal := uint32(key >> 32)
-		ipKey := uint64(ipVal)
-		subnetKey := uint64(ipVal >> 8)
-		if cEntry, ok := ts.connPerIP.Get(ipKey); ok && cEntry.Value > 0 {
-			ts.connPerIP.Set(ipKey, cEntry.Value-1)
-		}
-		if sEntry, ok := ts.connPerSubnet.Get(subnetKey); ok && sEntry.Value > 0 {
-			ts.connPerSubnet.Set(subnetKey, sEntry.Value-1)
-		}
+		ts.deleteConnection(key)
 	}
 
 	return int64(len(toDelete))
@@ -587,6 +622,9 @@ func (ts *TCPShield) EnforceCapacity(maxEntries int) int64 {
 	}
 	var removed int64
 	removed += ts.verified.EvictOldestWithCallback(maxEntries/2, func(key uint64, state TCPConnState) {
+		if !state.Counted {
+			return
+		}
 		ipKey := uint64(uint32(key >> 32))
 		subnetKey := uint64(uint32(key>>32) >> 8)
 		ts.decrementConnectionCounters(ipKey, subnetKey)
@@ -611,7 +649,7 @@ func (ts *TCPShield) GetBlacklist() []string {
 		if entry.Value.IsBlacklisted() {
 			val := entry.Value
 			ip := fmt.Sprintf("%d.%d.%d.%d", byte(key>>24), byte(key>>16), byte(key>>8), byte(key))
-			rem := time.Duration(val.BlacklistUntil - now).Truncate(time.Second)
+			rem := time.Duration(val.BlacklistDeadline() - now).Truncate(time.Second)
 			if rem < 0 {
 				rem = 0
 			}
@@ -625,7 +663,7 @@ func (ts *TCPShield) GetBlacklist() []string {
 		if entry.Value.IsBlacklisted() {
 			val := entry.Value
 			ip := fmt.Sprintf("%d.%d.%d.%d", byte(key>>24), byte(key>>16), byte(key>>8), byte(key))
-			rem := time.Duration(val.BlacklistUntil - now).Truncate(time.Second)
+			rem := time.Duration(val.BlacklistDeadline() - now).Truncate(time.Second)
 			if rem < 0 {
 				rem = 0
 			}

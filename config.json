@@ -127,7 +127,7 @@
     // Chu kỳ quét socket hệ thống để cập nhật các port đang lắng nghe (Giây)
     "interval_sec": 5,
 
-    // Danh sách các port loại trừ không áp dụng lọc (ví dụ: [80, 443])
+    // Port luôn coi là đang mở nếu Windows không phát hiện được; các lớp chống DDoS vẫn áp dụng.
     "exclude_ports": []
   },
 

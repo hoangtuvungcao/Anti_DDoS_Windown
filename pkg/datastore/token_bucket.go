@@ -60,6 +60,7 @@ func (fb *FlowBucket) Allow(packetSize uint16) bool {
 		fb.PacketTokens = fb.MaxPPS
 		fb.ByteTokens = fb.MaxBPS
 		fb.LastRefill = now
+		fb.Violations = 0
 	}
 
 	// Refill tokens based on elapsed time
@@ -98,6 +99,9 @@ func (fb *FlowBucket) Allow(packetSize uint16) bool {
 	// Track stats
 	fb.TotalPackets++
 	fb.TotalBytes += uint64(packetSize)
+	if fb.Violations > 0 {
+		fb.Violations--
+	}
 
 	return true
 }
@@ -138,9 +142,16 @@ func (fb *FlowBucket) IsBlacklisted() bool {
 	}
 	if time.Now().UnixNano() >= fb.BlacklistUntil {
 		fb.Blacklisted = false
+		fb.Violations = 0
 		return false
 	}
 	return true
+}
+
+func (fb *FlowBucket) BlacklistDeadline() int64 {
+	fb.mu.Lock()
+	defer fb.mu.Unlock()
+	return fb.BlacklistUntil
 }
 
 // IPBucket tracks aggregate traffic per-IP (all flows from same IP combined).
@@ -179,6 +190,7 @@ func (ib *IPBucket) Allow() bool {
 		ib.Blacklisted = false
 		ib.PacketTokens = ib.MaxPPS
 		ib.LastRefill = now
+		ib.Violations = 0
 	}
 
 	elapsed := float64(now-ib.LastRefill) / float64(time.Second)
@@ -196,6 +208,9 @@ func (ib *IPBucket) Allow() bool {
 	}
 
 	ib.PacketTokens -= 1.0
+	if ib.Violations > 0 {
+		ib.Violations--
+	}
 	return true
 }
 
@@ -231,9 +246,16 @@ func (ib *IPBucket) IsBlacklisted() bool {
 	}
 	if time.Now().UnixNano() >= ib.BlacklistUntil {
 		ib.Blacklisted = false
+		ib.Violations = 0
 		return false
 	}
 	return true
+}
+
+func (ib *IPBucket) BlacklistDeadline() int64 {
+	ib.mu.Lock()
+	defer ib.mu.Unlock()
+	return ib.BlacklistUntil
 }
 
 // SubnetBucket tracks aggregate traffic per /24 subnet (e.g. 192.168.1.0/24).
@@ -274,6 +296,7 @@ func (sb *SubnetBucket) Allow() bool {
 		sb.Blacklisted = false
 		sb.PacketTokens = sb.MaxPPS
 		sb.LastRefill = now
+		sb.Violations = 0
 	}
 
 	elapsed := float64(now-sb.LastRefill) / float64(time.Second)
@@ -291,6 +314,9 @@ func (sb *SubnetBucket) Allow() bool {
 	}
 
 	sb.PacketTokens -= 1.0
+	if sb.Violations > 0 {
+		sb.Violations--
+	}
 	return true
 }
 
@@ -326,7 +352,14 @@ func (sb *SubnetBucket) IsBlacklisted() bool {
 	}
 	if time.Now().UnixNano() >= sb.BlacklistUntil {
 		sb.Blacklisted = false
+		sb.Violations = 0
 		return false
 	}
 	return true
+}
+
+func (sb *SubnetBucket) BlacklistDeadline() int64 {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.BlacklistUntil
 }

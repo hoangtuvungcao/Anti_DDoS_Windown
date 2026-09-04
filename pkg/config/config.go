@@ -117,17 +117,17 @@ func DefaultConfig() Config {
 		SystemMode: "AUTO",
 		PeaceMode: PeaceModeConfig{
 			MonitorOnly:               true,
-			UDPPPSPerFlow:             120,
-			UDPBPSPerFlow:             1048576, // 1 MB/s
-			UDPPPSPerIP:               350,
-			SubnetPPSLimit:            1200,
-			BlacklistDurSec:           300,
-			TCPMaxConnPerIP:           60,
-			TCPConnRatePerIP:          25,
-			TCPMaxConnPerSubnet:       300,
+			UDPPPSPerFlow:             500,
+			UDPBPSPerFlow:             5242880, // 5 MiB/s
+			UDPPPSPerIP:               1500,
+			SubnetPPSLimit:            5000,
+			BlacklistDurSec:           30,
+			TCPMaxConnPerIP:           150,
+			TCPConnRatePerIP:          60,
+			TCPMaxConnPerSubnet:       500,
 			TCPIdleTimeoutSec:         90,
 			EnableAmplificationFilter: true,
-			EnableDPIShield:           true,
+			EnableDPIShield:           false,
 			EnableGameShield:          true,
 		},
 
@@ -135,14 +135,14 @@ func DefaultConfig() Config {
 			TriggerPPS:      15000,
 			TriggerBPS:      52428800, // 50 MiB/s inbound
 			CooldownSec:     60,
-			UDPPPSPerFlow:   35,
-			UDPBPSPerFlow:   524288,
-			UDPPerIPPPS:     80,
-			SubnetPPSLimit:  200,
+			UDPPPSPerFlow:   250,
+			UDPBPSPerFlow:   2097152,
+			UDPPerIPPPS:     600,
+			SubnetPPSLimit:  2500,
 			EnableDPI:       true,
 			EntropyMode:     "AUTO",
 			EnableTwoWay:    true,
-			GeoIPMode:       "AUTO",
+			GeoIPMode:       "OFF",
 			StrictWhitelist: true,
 		},
 
@@ -274,6 +274,23 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.WebDashboard.Port == 0 {
 		cfg.WebDashboard.Port = def.WebDashboard.Port
+	}
+	// Very old/minimal configs may omit the whole WAR section. Derive a strict
+	// profile from their explicit PEACE limits instead of rejecting startup when
+	// newer production defaults happen to be higher.
+	if !bytes.Contains(cleanData, []byte(`"war_mode"`)) {
+		if cfg.WarMode.UDPPPSPerFlow > cfg.PeaceMode.UDPPPSPerFlow {
+			cfg.WarMode.UDPPPSPerFlow = cfg.PeaceMode.UDPPPSPerFlow
+		}
+		if cfg.WarMode.UDPBPSPerFlow > cfg.PeaceMode.UDPBPSPerFlow {
+			cfg.WarMode.UDPBPSPerFlow = cfg.PeaceMode.UDPBPSPerFlow
+		}
+		if cfg.WarMode.UDPPerIPPPS > cfg.PeaceMode.UDPPPSPerIP {
+			cfg.WarMode.UDPPerIPPPS = cfg.PeaceMode.UDPPPSPerIP
+		}
+		if cfg.WarMode.SubnetPPSLimit > cfg.PeaceMode.SubnetPPSLimit {
+			cfg.WarMode.SubnetPPSLimit = cfg.PeaceMode.SubnetPPSLimit
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err

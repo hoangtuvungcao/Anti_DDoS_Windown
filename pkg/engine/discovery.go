@@ -20,11 +20,11 @@ type PortSet struct {
 // PortDiscovery periodically scans the OS for listening TCP/UDP ports.
 // Uses Windows API GetExtendedTcpTable / GetExtendedUdpTable via iphlpapi.dll.
 type PortDiscovery struct {
-	current    atomic.Pointer[PortSet]
-	interval   time.Duration
-	stopCh     chan struct{}
-	exclude    map[uint16]bool
-	excludeMu  sync.RWMutex // protects exclude; workers read, web-server writes
+	current   atomic.Pointer[PortSet]
+	interval  time.Duration
+	stopCh    chan struct{}
+	exclude   map[uint16]bool
+	excludeMu sync.RWMutex // protects exclude; workers read, web-server writes
 }
 
 // Windows API constants
@@ -135,13 +135,19 @@ func (pd *PortDiscovery) IsExcluded(port uint16) bool {
 	return v
 }
 
-// AddExcludePort registers an additional port to bypass all firewall heuristics
-// at runtime. Used by the web dashboard to ensure its own HTTP traffic is never
-// blocked by the TCP or UDP shield regardless of system mode.
+// AddExcludePort registers a port that should be treated as listening even when
+// OS discovery cannot see it. Other firewall layers still protect the port.
 func (pd *PortDiscovery) AddExcludePort(port uint16) {
 	pd.excludeMu.Lock()
 	pd.exclude[port] = true
 	pd.excludeMu.Unlock()
+}
+
+// Refresh immediately publishes a fresh snapshot after a local service starts.
+// This avoids broad port exemptions while ensuring a newly opened listener is
+// recognized before the next periodic scan.
+func (pd *PortDiscovery) Refresh() {
+	pd.current.Store(pd.scan())
 }
 
 // Start begins periodic scanning in a goroutine.
@@ -213,7 +219,7 @@ func (pd *PortDiscovery) scanTCP4(ps *PortSet) {
 		}
 		row := (*tcpRowOwnerPID)(unsafe.Pointer(&buf[offset]))
 		localPort := decodePort(row.LocalPort)
-		if row.State == mibTCPStateListen && localPort > 0 && !pd.exclude[localPort] {
+		if row.State == mibTCPStateListen && localPort > 0 && !pd.IsExcluded(localPort) {
 			ps.TCP[localPort] = true
 		}
 		if row.State == mibTCPStateEstablished && localPort > 0 {
@@ -246,7 +252,7 @@ func (pd *PortDiscovery) scanTCP6(ps *PortSet) {
 		}
 		row := (*tcp6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
 		port := decodePort(row.LocalPort)
-		if port > 0 && !pd.exclude[port] {
+		if port > 0 && !pd.IsExcluded(port) {
 			ps.TCP[port] = true
 		}
 	}
@@ -275,7 +281,7 @@ func (pd *PortDiscovery) scanUDP4(ps *PortSet) {
 		}
 		row := (*udpRowOwnerPID)(unsafe.Pointer(&buf[offset]))
 		port := decodePort(row.LocalPort)
-		if port > 0 && !pd.exclude[port] {
+		if port > 0 && !pd.IsExcluded(port) {
 			ps.UDP[port] = true
 		}
 	}
@@ -304,7 +310,7 @@ func (pd *PortDiscovery) scanUDP6(ps *PortSet) {
 		}
 		row := (*udp6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
 		port := decodePort(row.LocalPort)
-		if port > 0 && !pd.exclude[port] {
+		if port > 0 && !pd.IsExcluded(port) {
 			ps.UDP[port] = true
 		}
 	}

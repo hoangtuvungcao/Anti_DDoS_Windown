@@ -39,6 +39,17 @@ func (m *ModeManager) SetMode(mode string) {
 	mode = sanitizeMode(mode)
 	if m.currentMode == mode {
 		m.mu.Unlock()
+		// Re-applying a dashboard preset while already in AUTO must still sync
+		// every subsystem with the current Peace/War state. The previous early
+		// return could leave Peace limits or strict=false active during an attack.
+		switch mode {
+		case ModeOn:
+			m.applyMode(true)
+		case ModeOff:
+			m.applyMode(false)
+		default:
+			m.applyMode(m.state.IsWarMode())
+		}
 		return
 	}
 

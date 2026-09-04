@@ -41,6 +41,17 @@ type GameShield struct {
 	raknetPingByte byte
 }
 
+const (
+	queryClassA2S uint8 = iota + 1
+	queryClassSAMP
+	queryClassRakNet
+	queryClassRepeated
+)
+
+func gameQueryKey(ip uint32, class uint8) uint64 {
+	return uint64(ip)<<8 | uint64(class)
+}
+
 // NewGameShield creates a new GameShield instance.
 func NewGameShield(customRules []CustomGameRule) *GameShield {
 	gs := &GameShield{
@@ -83,8 +94,6 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		return FilterPass
 	}
 
-	ipKey := pkt.IPFlowKey()
-
 	// 1. Check Valve Source Engine / Steam Query Floods (A2S_INFO, A2S_PLAYER, A2S_RULES)
 	// Query packets start with 0xFF 0xFF 0xFF 0xFF followed by query byte
 	if len(payload) >= 5 && bytes.Equal(payload[:4], gs.a2sHeader) {
@@ -92,7 +101,8 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		// 0x54 = A2S_INFO ('T'), 0x55 = A2S_PLAYER ('U'), 0x56 = A2S_RULES ('V'),
 		// 0x57 = A2S_SERVERQUERY_GETCHALLENGE ('W'), 0x69 = A2S_PING ('i'), 0x71 = A2A_PING ('q')
 		if op == 0x54 || op == 0x55 || op == 0x56 || op == 0x57 || op == 0x69 || op == 0x71 {
-			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+			bucketKey := gameQueryKey(pkt.SrcIPUint32(), queryClassA2S)
+			bucket, _ := gs.queryBuckets.GetOrCreate(bucketKey, func() *datastore.IPBucket {
 				return datastore.NewIPBucket(60) // 60 queries/sec for Steam server browser
 			})
 
@@ -108,7 +118,8 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 		op := payload[10]
 		// 'i' = Info, 'p' = Ping, 'c' = Players, 'r' = Rules, 'd' = Detailed Players
 		if op == 'i' || op == 'p' || op == 'c' || op == 'r' || op == 'd' {
-			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+			bucketKey := gameQueryKey(pkt.SrcIPUint32(), queryClassSAMP)
+			bucket, _ := gs.queryBuckets.GetOrCreate(bucketKey, func() *datastore.IPBucket {
 				return datastore.NewIPBucket(30)
 			})
 
@@ -125,7 +136,8 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 	if (payload[0] == 0x01 || payload[0] == 0x02) && len(payload) >= 33 {
 		// Verify RakNet offline message data ID magic at offset 17
 		if isRakNetMagic(payload[17:]) {
-			bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+			bucketKey := gameQueryKey(pkt.SrcIPUint32(), queryClassRakNet)
+			bucket, _ := gs.queryBuckets.GetOrCreate(bucketKey, func() *datastore.IPBucket {
 				return datastore.NewIPBucket(50) // 50 PPS limit
 			})
 
@@ -137,7 +149,8 @@ func (gs *GameShield) CheckGamePacket(pkt *packet.Packet, payload []byte) Filter
 
 	// 4. Check Repeated Byte Floods (e.g. 1000 bytes of 0x00, 0xFF, 'A', or 0x55 synthetic bot spam)
 	if len(payload) >= 32 && isRepeatedBytePattern(payload) {
-		bucket, _ := gs.queryBuckets.GetOrCreate(ipKey, func() *datastore.IPBucket {
+		bucketKey := gameQueryKey(pkt.SrcIPUint32(), queryClassRepeated)
+		bucket, _ := gs.queryBuckets.GetOrCreate(bucketKey, func() *datastore.IPBucket {
 			return datastore.NewIPBucket(10) // 10 PPS for repeated byte
 		})
 
